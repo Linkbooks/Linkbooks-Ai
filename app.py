@@ -1,7 +1,7 @@
 import os
 import logging
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, request, url_for, send_from_directory
 from dotenv import load_dotenv
 from supabase import create_client
@@ -60,7 +60,7 @@ def check_supabase():
     return {"message": "Supabase client initialized successfully."}, 200
 
 # Helper Functions
-def save_tokens_to_db(access_token, refresh_token, realm_id):
+def save_tokens_to_db(access_token, refresh_token, realm_id, expiry=None):
     """Save or update tokens in the Supabase database."""
     if not supabase:
         logging.error("Supabase client is not initialized.")
@@ -71,7 +71,8 @@ def save_tokens_to_db(access_token, refresh_token, realm_id):
         "access_token": access_token,
         "refresh_token": refresh_token,
         "realm_id": realm_id,
-        "last_updated": datetime.utcnow().isoformat()
+        "last_updated": datetime.utcnow().isoformat(),
+        "token_expiry": expiry
     }
 
     # Execute the upsert operation
@@ -80,12 +81,10 @@ def save_tokens_to_db(access_token, refresh_token, realm_id):
     # Log the full response for debugging
     logging.info(f"Supabase response: {response}")
 
-    # Check if the response contains data; if not, raise an error
     if not response.data:
         logging.error(f"Failed to save tokens: {response}")
         raise Exception(f"Failed to save tokens: {response}")
 
-    # Log success
     logging.info("Tokens saved to Supabase successfully.")
 
 def get_tokens_from_db():
@@ -95,13 +94,14 @@ def get_tokens_from_db():
         raise Exception("Supabase client is not available.")
     response = supabase.table("tokens").select("*").eq("user_id", "default_user").execute()
     if not response.data:
-        raise Exception("No tokens found.")
+        logging.error("No tokens found for the user in Supabase.")
+        return None, None, None, None
     token = response.data[0]
-    return token["access_token"], token["refresh_token"], token["realm_id"]
+    return token["access_token"], token["refresh_token"], token["realm_id"], token.get("token_expiry")
 
 def refresh_access_token():
     """Refresh the access token using the refresh token."""
-    _, refresh_token, _ = get_tokens_from_db()
+    _, refresh_token, _, _ = get_tokens_from_db()
     auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
     payload = {'grant_type': 'refresh_token', 'refresh_token': refresh_token}
     headers = {'Accept': 'application/json'}
@@ -109,7 +109,8 @@ def refresh_access_token():
     response = requests.post(TOKEN_URL, auth=auth_header, data=payload, headers=headers)
     if response.status_code == 200:
         tokens = response.json()
-        save_tokens_to_db(tokens['access_token'], tokens['refresh_token'], os.getenv('COMPANY_ID'))
+        expiry_time = (datetime.utcnow() + timedelta(seconds=tokens['expires_in'])).isoformat()
+        save_tokens_to_db(tokens['access_token'], tokens['refresh_token'], os.getenv('COMPANY_ID'), expiry=expiry_time)
         logging.info("Access token refreshed successfully.")
     else:
         logging.error(f"Failed to refresh access token: {response.text}")
@@ -117,7 +118,14 @@ def refresh_access_token():
 
 def get_company_info():
     """Fetch company info from QuickBooks."""
-    access_token, _, realm_id = get_tokens_from_db()
+    access_token, _, realm_id, expiry = get_tokens_from_db()
+
+    # Refresh token if expired
+    if expiry and datetime.utcnow().isoformat() > expiry:
+        logging.info("Token expired. Refreshing...")
+        refresh_access_token()
+        access_token, _, _, _ = get_tokens_from_db()
+
     headers = {
         'Authorization': f"Bearer {access_token}",
         'Accept': 'application/json'
@@ -128,7 +136,7 @@ def get_company_info():
     if response.status_code == 401:
         logging.info("Access token expired. Attempting refresh...")
         refresh_access_token()
-        access_token, _, _ = get_tokens_from_db()
+        access_token, _, _, _ = get_tokens_from_db()
         headers['Authorization'] = f"Bearer {access_token}"
         response = requests.get(api_url, headers=headers)
     if response.status_code == 200:
@@ -163,38 +171,28 @@ def callback():
         if response.status_code != 200:
             raise Exception(response.text)
         tokens = response.json()
-        save_tokens_to_db(tokens['access_token'], tokens['refresh_token'], realm_id)
+        expiry_time = (datetime.utcnow() + timedelta(seconds=tokens['expires_in'])).isoformat()
+        save_tokens_to_db(tokens['access_token'], tokens['refresh_token'], realm_id, expiry=expiry_time)
         return redirect(url_for('dashboard'))
     except Exception as e:
         logging.error(f"Error in /callback: {e}")
         return {"error": str(e)}, 500
 
-@app.route('/test-tokens', methods=['GET'])
-def test_tokens():
-    try:
-        response = supabase.table("tokens").select("*").execute()
-        return {"data": response.data}, 200
-    except Exception as e:
-        return {"error": str(e)}, 500
-
-@app.route('/favicon.ico')
-def favicon():
-    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico')
-
-@app.route('/logout')
-def logout():
-    return redirect(url_for('index'))
-
-@app.route('/dashboard')
-def dashboard():
+@app.route('/business-info', methods=['GET'])
+def business_info():
+    """Fetch business information and return as JSON."""
     try:
         company_info = get_company_info()
-        # Render a template or return JSON data
-        return render_template('dashboard.html', data=company_info)
+        return {
+            "companyName": company_info.get("CompanyName"),
+            "legalName": company_info.get("LegalName"),
+            "address": company_info.get("CompanyAddr", {}).get("Line1"),
+            "phone": company_info.get("PrimaryPhone", {}).get("FreeFormNumber"),
+            "email": company_info.get("Email", {}).get("Address")
+        }, 200
     except Exception as e:
-        logging.error(f"Error fetching company info: {e}")
+        logging.error(f"Error in /business-info: {e}")
         return {"error": str(e)}, 500
-
 
 if __name__ == '__main__':
     app.run(debug=debug_mode)
