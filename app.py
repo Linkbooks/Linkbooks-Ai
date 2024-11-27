@@ -278,7 +278,8 @@ def debug_env():
     # Return masked results
     return {key: ("*****" if key != "OPENAI_API_KEY" else value[:5] + "*****") for key, value in variables.items()}, 200
 
-print(f"OpenAI API Key Loaded: {bool(openai.api_key)}")
+# Debugging information
+print(f"OpenAI API Key Loaded: {bool(openai_client.api_key)}")
 
 
 
