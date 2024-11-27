@@ -51,21 +51,11 @@ if not app.secret_key:
 # Flask Debug Mode
 debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
 
-# Example route to confirm Supabase connection
-@app.route('/check-supabase')
-def check_supabase():
-    if not supabase:
-        logging.error("Supabase client is not initialized.")
-        return {"error": "Supabase client failed to initialize."}, 500
-    return {"message": "Supabase client initialized successfully."}, 200
-
 # Helper Functions
 def save_tokens_to_db(access_token, refresh_token, realm_id, expiry=None):
-    """Save or update tokens in the Supabase database."""
     if not supabase:
         logging.error("Supabase client is not initialized.")
         raise Exception("Supabase client is not available.")
-
     data = {
         "user_id": "default_user",
         "access_token": access_token,
@@ -74,21 +64,14 @@ def save_tokens_to_db(access_token, refresh_token, realm_id, expiry=None):
         "last_updated": datetime.utcnow().isoformat(),
         "token_expiry": expiry
     }
-
-    # Execute the upsert operation
     response = supabase.table("tokens").upsert(data).execute()
-
-    # Log the full response for debugging
     logging.info(f"Supabase response: {response}")
-
     if not response.data:
         logging.error(f"Failed to save tokens: {response}")
         raise Exception(f"Failed to save tokens: {response}")
-
     logging.info("Tokens saved to Supabase successfully.")
 
 def get_tokens_from_db():
-    """Retrieve tokens from the Supabase database."""
     if not supabase:
         logging.error("Supabase client is not initialized.")
         raise Exception("Supabase client is not available.")
@@ -100,7 +83,6 @@ def get_tokens_from_db():
     return token["access_token"], token["refresh_token"], token["realm_id"], token.get("token_expiry")
 
 def refresh_access_token():
-    """Refresh the access token using the refresh token."""
     _, refresh_token, _, _ = get_tokens_from_db()
     auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
     payload = {'grant_type': 'refresh_token', 'refresh_token': refresh_token}
@@ -117,10 +99,7 @@ def refresh_access_token():
         raise Exception(response.text)
 
 def get_company_info():
-    """Fetch company info from QuickBooks."""
     access_token, _, realm_id, expiry = get_tokens_from_db()
-
-    # Refresh token if expired
     if expiry and datetime.utcnow().isoformat() > expiry:
         logging.info("Token expired. Refreshing...")
         refresh_access_token()
@@ -178,9 +157,17 @@ def callback():
         logging.error(f"Error in /callback: {e}")
         return {"error": str(e)}, 500
 
+@app.route('/dashboard')
+def dashboard():
+    try:
+        company_info = get_company_info()
+        return render_template('dashboard.html', data=company_info)
+    except Exception as e:
+        logging.error(f"Error in /dashboard: {e}")
+        return {"error": str(e)}, 500
+
 @app.route('/business-info', methods=['GET'])
 def business_info():
-    """Fetch business information and return as JSON."""
     try:
         company_info = get_company_info()
         return {
