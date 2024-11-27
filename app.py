@@ -5,11 +5,10 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, request, url_for, send_from_directory
 from dotenv import load_dotenv
 from supabase import create_client
-import openai # Correct usage; no `openai.error`
+from openai import OpenAI   # Updated import for client-based API
 
 # Load .env file in development environment
 if os.getenv('FLASK_ENV') == 'development':
-    from dotenv import load_dotenv
     load_dotenv()
 
 
@@ -41,8 +40,8 @@ AUTHORIZATION_BASE_URL = "https://appcenter.intuit.com/connect/oauth2"
 TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 SCOPE = "com.intuit.quickbooks.accounting"
 
-# Initialize OpenAI API key
-openai.api_key = os.getenv('OPENAI_API_KEY')
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -208,7 +207,8 @@ def analyze():
 
         logging.info(f"Prompt: {prompt}")
 
-        response = openai.ChatCompletion.create(
+        # Use the new SDK's client
+        response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are an expert business analyst."},
@@ -220,7 +220,7 @@ def analyze():
         logging.info(f"OpenAI response: {response}")
 
         # Extract the analysis from the response
-        analysis = response['choices'][0]['message']['content']
+        analysis = response.choices[0].message.content
 
         # Render the analysis.html template with the analysis and company info
         return render_template(
@@ -228,17 +228,15 @@ def analyze():
             analysis=analysis,
             data=company_info
         )
-    except openai.error.OpenAIError as e:
-        logging.error(f"OpenAI API error in /analyze: {e}")
-        return {"error": "There was an issue with the AI service. Please try again later."}, 500
     except Exception as e:
         logging.error(f"Unexpected error in /analyze: {e}")
         return {"error": str(e)}, 500
 
+
 @app.route('/test-openai', methods=['GET'])
 def test_openai():
     try:
-        response = openai.ChatCompletion.create(
+        response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -246,7 +244,7 @@ def test_openai():
             ],
             max_tokens=50
         )
-        return {"message": response['choices'][0]['message']['content']}, 200
+        return {"message": response.choices[0].message.content}, 200
     except Exception as e:
         logging.error(f"Error in /test-openai: {e}")
         return {"error": f"OpenAI error: {str(e)}"}, 500
