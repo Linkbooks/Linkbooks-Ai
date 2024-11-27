@@ -4,6 +4,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #333;
     background: linear-gradient(to bottom, #e3e9ed, #f5f7fa);
+    line-height: 1.6;
 }
 
 header {
@@ -51,7 +52,6 @@ main h2 {
     color: #333;
 }
 
-
 .company-info {
     background: #f9fafb;
     padding: 20px;
@@ -98,6 +98,58 @@ footer {
 
 footer p {
     margin: 10px 0;
+}
+
+/* Analysis Page Specific Styles */
+.analysis-section {
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.analysis {
+    background-color: #e7f3ff;
+    border-left: 5px solid #007aff;
+    padding: 15px;
+    font-style: italic;
+    font-size: 1.1rem;
+    color: #003366;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.loading-message, .no-data-message {
+    color: #999;
+    font-style: italic;
+    margin-top: 20px;
+}
+
+.error-message {
+    color: red;
+    font-weight: bold;
+    margin-top: 20px;
+}
+
+.navigation {
+    margin-top: 30px;
+}
+
+.navigation a.button {
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+    padding: 10px 20px;
+    font-size: 1rem;
+    color: #fff;
+    background: linear-gradient(90deg, #007aff, #5856d6);
+    border-radius: 30px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease-in-out;
+}
+
+.navigation a.button:hover {
+    background: linear-gradient(90deg, #5856d6, #007aff);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+    transform: translateY(-2px);
 }
 
 /* Animations */

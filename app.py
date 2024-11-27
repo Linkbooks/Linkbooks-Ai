@@ -185,6 +185,43 @@ def business_info():
     except Exception as e:
         logging.error(f"Error in /business-info: {e}")
         return {"error": str(e)}, 500
+    
+@app.route('/analyze', methods=['GET'])
+def analyze():
+    """
+    Fetch company information and return an AI-generated analysis.
+    """
+    try:
+        # Fetch company info
+        company_info = get_company_info()
+
+        # Generate analysis using OpenAI
+        prompt = f"""
+        Analyse the following business details and provide a brief summary in British English:
+        - Company Name: {company_info.get("CompanyName")}
+        - Legal Name: {company_info.get("LegalName")}
+        - Address: {company_info.get("CompanyAddr", {}).get("Line1", "N/A")}
+        - Phone: {company_info.get("PrimaryPhone", {}).get("FreeFormNumber", "N/A")}
+        - Email: {company_info.get("Email", {}).get("Address", "N/A")}
+        """
+        response = openai.Completion.create(
+            model="text-davinci-003",  # Use any OpenAI model you have access to
+            prompt=prompt,
+            max_tokens=150
+        )
+        analysis = response.choices[0].text.strip()
+
+        # Render analysis.html with analysis and company info
+        return render_template(
+            'analysis.html',
+            analysis=analysis,
+            data=company_info
+        )
+    except Exception as e:
+        logging.error(f"Error in /analyze: {e}")
+        return {"error": str(e)}, 500
+
+
 
 if __name__ == '__main__':
     app.run(debug=debug_mode)

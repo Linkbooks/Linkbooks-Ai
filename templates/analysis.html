@@ -4,15 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Company Analysis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <h1>Company Analysis</h1>
-    <p><strong>Analysis Summary:</strong></p>
-    <blockquote>{{ analysis }}</blockquote>
+    <header>
+        <h1>Company Analysis</h1>
+    </header>
 
-    <h2>Original Company Information:</h2>
-    <pre>{{ data | tojson(indent=2) }}</pre>
+    <main>
+        <div class="analysis-section">
+            <h2>Analysis Summary</h2>
+            {% if analysis %}
+                <blockquote class="analysis">{{ analysis }}</blockquote>
+            {% else %}
+                <p class="loading-message">Generating analysis... Please wait.</p>
+            {% endif %}
+        </div>
 
-    <a href="/dashboard">Back to Dashboard</a>
+        <div class="company-info-section">
+            <h2>Original Company Information</h2>
+            {% if data %}
+                <pre class="company-info">{{ data | tojson(indent=2) }}</pre>
+            {% else %}
+                <p class="no-data-message">No company information available.</p>
+            {% endif %}
+        </div>
+
+        {% if error %}
+            <div class="error-section">
+                <p class="error-message">Error: {{ error }}</p>
+            </div>
+        {% endif %}
+
+        <div class="navigation">
+            <a href="{{ url_for('dashboard') }}" class="button">Back to Dashboard</a>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 WAW Studios | Powered by QuickBooks GPT</p>
+    </footer>
 </body>
 </html>
