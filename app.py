@@ -9,7 +9,9 @@ import openai # Correct usage; no `openai.error`
 
 # Load .env file in development environment
 if os.getenv('FLASK_ENV') == 'development':
+    from dotenv import load_dotenv
     load_dotenv()
+
 
 # Validate critical environment variables early
 required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY', 'QB_CLIENT_ID', 'QB_CLIENT_SECRET', 'FLASK_SECRET_KEY']
@@ -246,9 +248,39 @@ def test_openai():
         )
         return {"message": response['choices'][0]['message']['content']}, 200
     except Exception as e:
-        # Catching generic exceptions since openai.error.OpenAIError is invalid
         logging.error(f"Error in /test-openai: {e}")
-        return {"error": "OpenAI service is unavailable. Check API key and model."}, 500
+        return {"error": f"OpenAI error: {str(e)}"}, 500
+    
+@app.route('/test-openai-key', methods=['GET'])
+def test_openai_key():
+    try:
+        if not openai.api_key:
+            raise ValueError("OpenAI API key not loaded")
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "Test API key"}],
+            max_tokens=10
+        )
+        return {"response": response['choices'][0]['message']['content']}, 200
+    except Exception as e:
+        return {"error": str(e)}, 500
+    
+@app.route('/debug-env', methods=['GET'])
+def debug_env():
+    variables = {
+        "SUPABASE_URL": os.getenv('SUPABASE_URL'),
+        "SUPABASE_KEY": os.getenv('SUPABASE_KEY'),
+        "QB_CLIENT_ID": os.getenv('QB_CLIENT_ID'),
+        "QB_CLIENT_SECRET": os.getenv('QB_CLIENT_SECRET'),
+        "FLASK_SECRET_KEY": os.getenv('FLASK_SECRET_KEY'),
+        "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
+    }
+    # Don't expose secrets directly, but useful for debugging.
+    logging.info(f"Environment variables: {variables}")
+    # Return masked results
+    return {key: ("*****" if key != "OPENAI_API_KEY" else value[:5] + "*****") for key, value in variables.items()}, 200
+
+print(f"OpenAI API Key Loaded: {bool(openai.api_key)}")
 
 
 

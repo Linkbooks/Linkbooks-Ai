@@ -7,16 +7,17 @@
     <title>QuickBooks GPT App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <style>
-        /* Additional styling for buttons */
+        /* Styling for buttons */
         .button-container {
             display: flex;
             justify-content: center;
             gap: 20px;
             margin-top: 40px;
         }
-        
+
         .button-container a,
         .button-container button {
+            display: inline-block; /* Ensures consistent behavior for both a and button */
             padding: 15px 30px;
             font-size: 1rem;
             text-align: center;
@@ -36,10 +37,6 @@
             box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
             transform: translateY(-2px);
         }
-
-        .button-container button {
-            border: none;
-        }
     </style>
 </head>
 <body>
@@ -50,9 +47,9 @@
     <main>
         <div class="button-container">
             <!-- Login button -->
-            <a href="{{ url_for('login') }}">Login with QuickBooks</a>
+            <a href="{{ url_for('login') }}" class="button">Login with QuickBooks</a>
             <!-- Test OpenAI button -->
-            <button onclick="window.location.href='/test-openai'">Test OpenAI API</button>
+            <button class="button" onclick="window.location.href='/test-openai'">Test OpenAI API</button>
         </div>
     </main>
     
