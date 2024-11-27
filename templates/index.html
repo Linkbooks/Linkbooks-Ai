@@ -6,6 +6,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QuickBooks GPT App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        /* Additional styling for buttons */
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 40px;
+        }
+        
+        .button-container a,
+        .button-container button {
+            padding: 15px 30px;
+            font-size: 1rem;
+            text-align: center;
+            text-decoration: none;
+            color: white;
+            background: linear-gradient(90deg, #007aff, #5856d6);
+            border: none;
+            border-radius: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease-in-out;
+            cursor: pointer;
+        }
+
+        .button-container a:hover,
+        .button-container button:hover {
+            background: linear-gradient(90deg, #5856d6, #007aff);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .button-container button {
+            border: none;
+        }
+    </style>
 </head>
 <body>
     <header>
@@ -13,8 +48,12 @@
     </header>
     
     <main>
-        <!-- Login button -->
-        <a href="{{ url_for('login') }}" class="login-button">Login with QuickBooks</a>
+        <div class="button-container">
+            <!-- Login button -->
+            <a href="{{ url_for('login') }}">Login with QuickBooks</a>
+            <!-- Test OpenAI button -->
+            <button onclick="window.location.href='/test-openai'">Test OpenAI API</button>
+        </div>
     </main>
     
     <footer>

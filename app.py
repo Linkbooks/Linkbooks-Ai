@@ -6,6 +6,7 @@ from flask import Flask, render_template, redirect, request, url_for, send_from_
 from dotenv import load_dotenv
 from supabase import create_client
 import openai
+import openai.error
 
 # Load .env file in development environment
 if os.getenv('FLASK_ENV') == 'development':
@@ -138,7 +139,6 @@ def login():
 def logout():
     return redirect(url_for('index'))
 
-
 @app.route('/callback')
 def callback():
     try:
@@ -185,33 +185,30 @@ def business_info():
     except Exception as e:
         logging.error(f"Error in /business-info: {e}")
         return {"error": str(e)}, 500
-    
+
 @app.route('/analyze', methods=['GET'])
 def analyze():
-    """
-    Fetch company information and return an AI-generated analysis.
-    """
     try:
-        logging.info("Starting /analyze route")
-
         # Fetch company info
         company_info = get_company_info()
-        logging.info(f"Company info fetched: {company_info}")
+
+        # Log company_info for debugging
+        logging.info(f"Company Info: {company_info}")
 
         # Generate analysis using OpenAI ChatCompletion
         prompt = (
             "Analyse the following business details and provide a brief summary in British English:\n"
-            f"- Company Name: {company_info.get('CompanyName')}\n"
-            f"- Legal Name: {company_info.get('LegalName')}\n"
+            f"- Company Name: {company_info.get('CompanyName', 'N/A')}\n"
+            f"- Legal Name: {company_info.get('LegalName', 'N/A')}\n"
             f"- Address: {company_info.get('CompanyAddr', {}).get('Line1', 'N/A')}\n"
             f"- Phone: {company_info.get('PrimaryPhone', {}).get('FreeFormNumber', 'N/A')}\n"
             f"- Email: {company_info.get('Email', {}).get('Address', 'N/A')}\n"
         )
-        logging.info(f"Prompt for OpenAI: {prompt}")
 
-        # OpenAI ChatCompletion API call
+        logging.info(f"Prompt: {prompt}")
+
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Or "gpt-4" if available and configured
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are an expert business analyst."},
                 {"role": "user", "content": prompt}
@@ -219,11 +216,10 @@ def analyze():
             max_tokens=300,
             temperature=0.7
         )
-        logging.info(f"OpenAI response received: {response}")
+        logging.info(f"OpenAI response: {response}")
 
-        # Extract the analysis from the response safely
-        analysis = response["choices"][0]["message"]["content"].strip()
-        logging.info(f"Generated analysis: {analysis}")
+        # Extract the analysis from the response
+        analysis = response['choices'][0]['message']['content']
 
         # Render the analysis.html template with the analysis and company info
         return render_template(
@@ -231,19 +227,31 @@ def analyze():
             analysis=analysis,
             data=company_info
         )
-
-    except openai.OpenAIError as e:
-        logging.error(f"OpenAI API error: {e}")
+    except openai.error.OpenAIError as e:
+        logging.error(f"OpenAI API error in /analyze: {e}")
         return {"error": "There was an issue with the AI service. Please try again later."}, 500
-
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logging.error(f"Unexpected error in /analyze: {e}")
         return {"error": str(e)}, 500
 
-
-
-
-
+@app.route('/test-openai', methods=['GET'])
+def test_openai():
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello, can you confirm this is working?"}
+            ],
+            max_tokens=50
+        )
+        return {"message": response['choices'][0]['message']['content']}, 200
+    except openai.error.OpenAIError as e:
+        logging.error(f"OpenAI API error in /test-openai: {e}")
+        return {"error": "OpenAI service is unavailable. Check API key and model."}, 500
+    except Exception as e:
+        logging.error(f"Unexpected error in /test-openai: {e}")
+        return {"error": str(e)}, 500
 
 
 if __name__ == '__main__':
