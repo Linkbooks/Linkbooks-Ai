@@ -192,8 +192,11 @@ def analyze():
     Fetch company information and return an AI-generated analysis.
     """
     try:
+        logging.info("Starting /analyze route")
+
         # Fetch company info
         company_info = get_company_info()
+        logging.info(f"Company info fetched: {company_info}")
 
         # Generate analysis using OpenAI ChatCompletion
         prompt = (
@@ -204,20 +207,23 @@ def analyze():
             f"- Phone: {company_info.get('PrimaryPhone', {}).get('FreeFormNumber', 'N/A')}\n"
             f"- Email: {company_info.get('Email', {}).get('Address', 'N/A')}\n"
         )
+        logging.info(f"Prompt for OpenAI: {prompt}")
 
-        # Use the updated ChatCompletion method with gpt-3.5-turbo
+        # OpenAI ChatCompletion API call
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Ensuring compatibility with 3.5-turbo
+            model="gpt-3.5-turbo",  # Or "gpt-4" if available and configured
             messages=[
-                {"role": "system", "content": "You are an expert business analyst. Analyze the following details and provide a concise summary."},
+                {"role": "system", "content": "You are an expert business analyst."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=300,
             temperature=0.7
         )
+        logging.info(f"OpenAI response received: {response}")
 
         # Extract the analysis from the response safely
-        analysis = response.choices[0].message["content"]
+        analysis = response["choices"][0]["message"]["content"].strip()
+        logging.info(f"Generated analysis: {analysis}")
 
         # Render the analysis.html template with the analysis and company info
         return render_template(
@@ -226,13 +232,15 @@ def analyze():
             data=company_info
         )
 
-    except openai.error.OpenAIError as e:
-        logging.error(f"OpenAI API error in /analyze: {e}")
+    except openai.OpenAIError as e:
+        logging.error(f"OpenAI API error: {e}")
         return {"error": "There was an issue with the AI service. Please try again later."}, 500
 
     except Exception as e:
-        logging.error(f"Unexpected error in /analyze: {e}")
+        logging.error(f"Unexpected error: {e}")
         return {"error": str(e)}, 500
+
+
 
 
 
