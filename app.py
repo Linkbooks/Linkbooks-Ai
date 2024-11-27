@@ -189,20 +189,20 @@ def business_info():
 @app.route('/analyze', methods=['GET'])
 def analyze():
     try:
-        # Fetch company info
         company_info = get_company_info()
-
-        # Log company_info for debugging
         logging.info(f"Company Info: {company_info}")
 
-        # Generate analysis using OpenAI ChatCompletion
+        # Enhanced prompt
         prompt = (
-            "Analyse the following business details and provide a brief summary in British English:\n"
-            f"- Company Name: {company_info.get('CompanyName', 'N/A')}\n"
-            f"- Legal Name: {company_info.get('LegalName', 'N/A')}\n"
-            f"- Address: {company_info.get('CompanyAddr', {}).get('Line1', 'N/A')}\n"
-            f"- Phone: {company_info.get('PrimaryPhone', {}).get('FreeFormNumber', 'N/A')}\n"
-            f"- Email: {company_info.get('Email', {}).get('Address', 'N/A')}\n"
+            "Analyse the following business details and provide a concise summary, including:\n"
+            "- Company name and legal name\n"
+            "- Address (city, country, and postal code)\n"
+            "- Contact details (phone and email)\n"
+            "- Fiscal year start month\n"
+            "- Industry type\n"
+            "- Subscription status and offerings\n"
+            "Present the information in a formal business tone.\n\n"
+            f"Company Info:\n{company_info}"
         )
 
         logging.info(f"Prompt: {prompt}")
@@ -210,14 +210,10 @@ def analyze():
         # Use the new SDK's client
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert business analyst."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
             temperature=0.7
         )
-        logging.info(f"OpenAI response: {response}")
 
         # Extract the analysis from the response
         analysis = response.choices[0].message.content
@@ -229,7 +225,7 @@ def analyze():
             data=company_info
         )
     except Exception as e:
-        logging.error(f"Unexpected error in /analyze: {e}")
+        logging.error(f"Error in /analyze: {e}")
         return {"error": str(e)}, 500
 
 
