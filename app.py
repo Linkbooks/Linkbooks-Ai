@@ -185,5 +185,16 @@ def favicon():
 def logout():
     return redirect(url_for('index'))
 
+@app.route('/dashboard')
+def dashboard():
+    try:
+        company_info = get_company_info()
+        # Render a template or return JSON data
+        return render_template('dashboard.html', data=company_info)
+    except Exception as e:
+        logging.error(f"Error fetching company info: {e}")
+        return {"error": str(e)}, 500
+
+
 if __name__ == '__main__':
     app.run(debug=debug_mode)
