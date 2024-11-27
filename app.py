@@ -245,12 +245,11 @@ def test_openai():
             max_tokens=50
         )
         return {"message": response['choices'][0]['message']['content']}, 200
-    except openai.error.OpenAIError as e:
-        logging.error(f"OpenAI API error in /test-openai: {e}")
-        return {"error": "OpenAI service is unavailable. Check API key and model."}, 500
     except Exception as e:
-        logging.error(f"Unexpected error in /test-openai: {e}")
-        return {"error": str(e)}, 500
+        # Catching generic exceptions since openai.error.OpenAIError is invalid
+        logging.error(f"Error in /test-openai: {e}")
+        return {"error": "OpenAI service is unavailable. Check API key and model."}, 500
+
 
 
 if __name__ == '__main__':
