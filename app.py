@@ -73,11 +73,19 @@ def save_tokens_to_db(access_token, refresh_token, realm_id):
         "realm_id": realm_id,
         "last_updated": datetime.utcnow().isoformat()
     }
+
+    # Execute the upsert operation
     response = supabase.table("tokens").upsert(data).execute()
+
+    # Log the full response for debugging
     logging.info(f"Supabase response: {response}")
-    if response.error:
-        logging.error(f"Failed to save tokens: {response.error}")
-        raise Exception(f"Failed to save tokens: {response.error}")
+
+    # Check if the response contains data; if not, raise an error
+    if not response.data:
+        logging.error(f"Failed to save tokens: {response}")
+        raise Exception(f"Failed to save tokens: {response}")
+
+    # Log success
     logging.info("Tokens saved to Supabase successfully.")
 
 def get_tokens_from_db():
