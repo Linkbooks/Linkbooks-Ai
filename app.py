@@ -195,31 +195,46 @@ def analyze():
         # Fetch company info
         company_info = get_company_info()
 
-        # Generate analysis using OpenAI
-        prompt = f"""
-        Analyse the following business details and provide a brief summary in British English:
-        - Company Name: {company_info.get("CompanyName")}
-        - Legal Name: {company_info.get("LegalName")}
-        - Address: {company_info.get("CompanyAddr", {}).get("Line1", "N/A")}
-        - Phone: {company_info.get("PrimaryPhone", {}).get("FreeFormNumber", "N/A")}
-        - Email: {company_info.get("Email", {}).get("Address", "N/A")}
-        """
-        response = openai.Completion.create(
-            model="text-davinci-003",  # Use any OpenAI model you have access to
-            prompt=prompt,
-            max_tokens=150
+        # Generate analysis using OpenAI ChatCompletion
+        prompt = (
+            "Analyse the following business details and provide a brief summary in British English:\n"
+            f"- Company Name: {company_info.get('CompanyName')}\n"
+            f"- Legal Name: {company_info.get('LegalName')}\n"
+            f"- Address: {company_info.get('CompanyAddr', {}).get('Line1', 'N/A')}\n"
+            f"- Phone: {company_info.get('PrimaryPhone', {}).get('FreeFormNumber', 'N/A')}\n"
+            f"- Email: {company_info.get('Email', {}).get('Address', 'N/A')}\n"
         )
-        analysis = response.choices[0].text.strip()
 
-        # Render analysis.html with analysis and company info
+        # Use the updated ChatCompletion method with gpt-3.5-turbo
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # Ensuring compatibility with 3.5-turbo
+            messages=[
+                {"role": "system", "content": "You are an expert business analyst. Analyze the following details and provide a concise summary."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=300,
+            temperature=0.7
+        )
+
+        # Extract the analysis from the response safely
+        analysis = response.choices[0].message["content"]
+
+        # Render the analysis.html template with the analysis and company info
         return render_template(
             'analysis.html',
             analysis=analysis,
             data=company_info
         )
+
+    except openai.error.OpenAIError as e:
+        logging.error(f"OpenAI API error in /analyze: {e}")
+        return {"error": "There was an issue with the AI service. Please try again later."}, 500
+
     except Exception as e:
-        logging.error(f"Error in /analyze: {e}")
+        logging.error(f"Unexpected error in /analyze: {e}")
         return {"error": str(e)}, 500
+
+
 
 
 
