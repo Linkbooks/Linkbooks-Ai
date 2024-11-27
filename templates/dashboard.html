@@ -6,19 +6,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - QuickBooks GPT App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
 </head>
 <body>
     <header>
-        <h1>QuickBooks GPT App Dashboard</h1>
+        <h1>QuickBooks GPT App</h1>
     </header>
     
     <main>
-        <h2>Company Information</h2>
-        <pre>{{ data | tojson(indent=2) }}</pre>
+        <h2>Dashboard</h2>
+        <div class="container">
+            <div class="company-info">
+                <h3 class="company-title">Company Information</h3>
+
+                <pre>{{ data | tojson(indent=2) }}</pre>
+            </div>
+            <button onclick="window.location.href='{{ url_for('logout') }}'">Logout</button>
+        </div>
     </main>
     
     <footer>
-        <p>&copy; 2024 WAW Studios</p>
+        <p>&copy; 2024 WAW Studios | Powered by QuickBooks GPT</p>
     </footer>
 </body>
 </html>
