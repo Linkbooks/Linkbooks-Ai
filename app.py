@@ -134,6 +134,11 @@ def login():
     logging.info(f"Redirecting to QuickBooks login: {auth_url}")
     return redirect(auth_url)
 
+@app.route('/logout')
+def logout():
+    return redirect(url_for('index'))
+
+
 @app.route('/callback')
 def callback():
     try:

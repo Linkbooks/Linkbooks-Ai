@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - QuickBooks GPT App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-
 </head>
 <body>
     <header>
@@ -18,9 +17,10 @@
         <div class="container">
             <div class="company-info">
                 <h3 class="company-title">Company Information</h3>
-
+                <!-- Displaying the company information as JSON -->
                 <pre>{{ data | tojson(indent=2) }}</pre>
             </div>
+            <!-- Logout button -->
             <button onclick="window.location.href='{{ url_for('logout') }}'">Logout</button>
         </div>
     </main>
