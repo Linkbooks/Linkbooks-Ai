@@ -5,8 +5,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, request, url_for, send_from_directory
 from dotenv import load_dotenv
 from supabase import create_client
-import openai
-import openai.error
+import openai # Correct usage; no `openai.error`
 
 # Load .env file in development environment
 if os.getenv('FLASK_ENV') == 'development':
