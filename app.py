@@ -123,6 +123,120 @@ def get_company_info():
         return response.json().get("QueryResponse", {}).get("CompanyInfo", [])[0]
     else:
         raise Exception(response.text)
+    
+def fetch_report(report_type, start_date=None, end_date=None):
+    """
+    Fetches a financial report from QuickBooks.
+    
+    :param report_type: Type of report (e.g., ProfitAndLoss, BalanceSheet).
+    :param start_date: Start date for the report (YYYY-MM-DD).
+    :param end_date: End date for the report (YYYY-MM-DD).
+    :return: Report data as JSON.
+    """
+    access_token, _, realm_id, _ = get_tokens_from_db()
+
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/json'
+    }
+
+    # Construct the API URL for the report
+    base_url = f'https://sandbox-quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}'
+    params = {}
+    if start_date:
+        params['start_date'] = start_date
+    if end_date:
+        params['end_date'] = end_date
+
+    response = requests.get(base_url, headers=headers, params=params)
+
+    if response.status_code == 401:
+        # Handle token expiration
+        logging.info("Access token expired. Attempting refresh...")
+        refresh_access_token()
+        access_token, _, _, _ = get_tokens_from_db()
+        headers['Authorization'] = f'Bearer {access_token}'
+        response = requests.get(base_url, headers=headers, params=params)
+
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logging.error(f"Error fetching report: {response.text}")
+        raise Exception(f"Failed to fetch report: {response.status_code} {response.text}")
+
+def get_reports():
+    """
+    Returns a list of supported QuickBooks reports.
+
+    :return: List of supported report types.
+    """
+    return [
+        # Financial Reports
+        "ProfitAndLoss",
+        "ProfitAndLossDetail",
+        "BalanceSheet",
+        "BalanceSheetDetail",
+        "CashFlow",
+        "TrialBalance",
+        "GeneralLedger",
+
+        # Sales Reports
+        "SalesByCustomerSummary",
+        "SalesByCustomerDetail",
+        "SalesByProductServiceSummary",
+        "SalesByProductServiceDetail",
+        "SalesByLocation",
+        "EstimatesByCustomer",
+
+        # Expense and Vendor Reports
+        "ExpensesByVendorSummary",
+        "ExpensesByVendorDetail",
+        "AgedPayablesSummary",
+        "AgedPayablesDetail",
+        "UnpaidBills",
+
+        # Customer Reports
+        "AgedReceivablesSummary",
+        "AgedReceivablesDetail",
+        "CustomerBalanceSummary",
+        "CustomerBalanceDetail",
+        "InvoiceList",
+
+        # Employee Reports
+        "PayrollSummary",
+        "PayrollDetails",
+        "EmployeeDetails",
+        "TimeActivitiesByEmployeeDetail",
+
+        # Product and Inventory Reports
+        "InventoryValuationSummary",
+        "InventoryValuationDetail",
+        "PhysicalInventoryWorksheet",
+        "ProductServiceList",
+
+        # Budget and Forecast Reports
+        "BudgetOverview",
+        "BudgetVsActual",
+        "ProfitAndLossBudgetPerformance",
+
+        # Tax and VAT Reports
+        "VATSummary",
+        "VATDetailReport",
+        "SalesTaxLiabilityReport",
+
+        # Custom Reports
+        "CustomSummaryReport",
+        "CustomTransactionDetailReport",
+
+        # Other Reports
+        "TransactionListByDate",
+        "AuditLog",
+        "BusinessSnapshot",
+        "MissingChecks",
+        "ReconciliationReports"
+    ]
+
+
 
 # Flask Routes
 @app.route('/')
@@ -227,6 +341,72 @@ def analyze():
     except Exception as e:
         logging.error(f"Error in /analyze: {e}")
         return {"error": str(e)}, 500
+    
+@app.route('/list-reports', methods=['GET'])
+def list_reports():
+    try:
+        # Use the get_reports() function to return the full list of supported reports
+        available_reports = get_reports()
+        return {
+            "availableReports": available_reports,
+            "message": "Use the /fetch-reports endpoint with a valid reportType from this list."
+        }, 200
+    except Exception as e:
+        logging.error(f"Error listing reports: {e}")
+        return {"error": str(e)}, 500
+
+
+
+@app.route('/fetch-reports', methods=['GET'])
+def fetch_reports():
+    try:
+        report_type = request.args.get('reportType')
+        start_date = request.args.get('startDate')
+        end_date = request.args.get('endDate')
+
+        if not report_type:
+            return {"error": "reportType parameter is required"}, 400
+
+        # Validate reportType against the list of supported reports
+        if report_type not in get_reports():
+            return {"error": f"Invalid reportType: {report_type}. Use /list-reports to see available reports."}, 400
+
+        # Use the defined fetch_report() function
+        report_data = fetch_report(
+            report_type=report_type,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        return {"reportType": report_type, "data": report_data}, 200
+    except Exception as e:
+        logging.error(f"Error fetching report: {e}")
+        return {"error": str(e)}, 500
+
+
+
+
+@app.route('/analyze-reports', methods=['POST'])
+def analyze_reports():
+    try:
+        reports = request.json
+
+        # Validate that reports contain data
+        if not reports or not isinstance(reports, dict):
+            return {"error": "Invalid or missing report data. Expected a JSON object."}, 400
+
+        prompt = f"Analyze the following financial data:\n{reports}"
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300
+        )
+        analysis = response.choices[0].message.content
+        return {"analysis": analysis, "originalData": reports}, 200
+    except Exception as e:
+        logging.error(f"Error analyzing reports: {e}")
+        return {"error": str(e)}, 500
+
 
 
 @app.route('/test-openai', methods=['GET'])
@@ -277,6 +457,11 @@ def debug_env():
 # Debugging information
 print(f"OpenAI API Key Loaded: {bool(openai_client.api_key)}")
 
+@app.before_request
+def log_request_info():
+    logging.info(f"Headers: {request.headers}")
+    logging.info(f"Body: {request.get_data()}")
+    logging.info(f"Args: {request.args}")
 
 
 if __name__ == '__main__':
