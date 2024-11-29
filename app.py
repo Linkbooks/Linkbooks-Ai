@@ -284,6 +284,18 @@ def dashboard():
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}")
         return {"error": str(e)}, 500
+    
+@app.route('/eula')
+def eula():
+    return render_template('eula.html')
+
+@app.route('/privacy-policy', methods=['GET'])
+def privacy_policy():
+    """
+    Serve the Privacy Policy page.
+    """
+    return render_template('privacy_policy.html')
+
 
 @app.route('/business-info', methods=['GET'])
 def business_info():
