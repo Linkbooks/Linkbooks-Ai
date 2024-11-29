@@ -42,6 +42,8 @@ main h2 {
 }
 
 .container {
+    max-width: 1200px;
+    margin: 0 auto;
     padding: 30px;
     text-align: center;
 }
@@ -89,15 +91,33 @@ button:hover {
     transform: translateY(-2px);
 }
 
+button:focus {
+    outline: 2px solid #007aff;
+    outline-offset: 4px;
+}
+
 footer {
-    margin-top: 20px;
     text-align: center;
-    color: #666;
-    font-size: 0.9rem;
+    padding: 20px 0;
+    background-color: #f9fafb;
+    border-top: 1px solid #ddd;
 }
 
 footer p {
-    margin: 10px 0;
+    margin: 0;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+footer a {
+    color: #007aff;
+    text-decoration: none;
+    margin: 0 10px;
+    transition: color 0.3s ease-in-out;
+}
+
+footer a:hover {
+    color: #004fcc;
 }
 
 /* Analysis Page Specific Styles */
@@ -124,6 +144,9 @@ footer p {
 }
 
 .error-message {
+    background-color: #ffe6e6;
+    padding: 10px;
+    border-radius: 4px;
     color: red;
     font-weight: bold;
     margin-top: 20px;
@@ -163,3 +186,4 @@ footer p {
         transform: translateY(0);
     }
 }
+

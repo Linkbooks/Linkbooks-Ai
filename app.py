@@ -285,9 +285,13 @@ def dashboard():
         logging.error(f"Error in /dashboard: {e}")
         return {"error": str(e)}, 500
     
-@app.route('/eula')
+@app.route('/eula', methods=['GET'])
 def eula():
+    """
+    Serve the End User License Agreement (EULA) page.
+    """
     return render_template('eula.html')
+
 
 @app.route('/privacy-policy', methods=['GET'])
 def privacy_policy():
