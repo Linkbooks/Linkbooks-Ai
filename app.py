@@ -111,7 +111,7 @@ def get_company_info():
         'Accept': 'application/json'
     }
     query = "SELECT * FROM CompanyInfo"
-    api_url = f"https://sandbox-quickbooks.api.intuit.com/v3/company/{realm_id}/query?query={query}&minorversion=14"
+    api_url = api_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/query?query={query}&minorversion=14"
     response = requests.get(api_url, headers=headers)
     if response.status_code == 401:
         logging.info("Access token expired. Attempting refresh...")
@@ -141,7 +141,7 @@ def fetch_report(report_type, start_date=None, end_date=None):
     }
 
     # Construct the API URL for the report
-    base_url = f'https://sandbox-quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}'
+    base_url = base_url = f'https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}'
     params = {}
     if start_date:
         params['start_date'] = start_date
