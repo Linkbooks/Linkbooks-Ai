@@ -141,7 +141,7 @@ def fetch_report(report_type, start_date=None, end_date=None):
     }
 
     # Construct the API URL for the report
-    base_url = base_url = f'https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}'
+    base_url = f'https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}'
     params = {}
     if start_date:
         params['start_date'] = start_date
@@ -149,6 +149,10 @@ def fetch_report(report_type, start_date=None, end_date=None):
         params['end_date'] = end_date
 
     response = requests.get(base_url, headers=headers, params=params)
+
+    # Log the intuit_tid for troubleshooting
+    intuit_tid = response.headers.get('intuit_tid', 'N/A')
+    logging.info(f"QuickBooks Response TID: {intuit_tid}")
 
     if response.status_code == 401:
         # Handle token expiration
@@ -158,11 +162,17 @@ def fetch_report(report_type, start_date=None, end_date=None):
         headers['Authorization'] = f'Bearer {access_token}'
         response = requests.get(base_url, headers=headers, params=params)
 
+        # Log the intuit_tid for the refreshed request
+        intuit_tid = response.headers.get('intuit_tid', 'N/A')
+        logging.info(f"QuickBooks Response TID (After Refresh): {intuit_tid}")
+
     if response.status_code == 200:
         return response.json()
     else:
         logging.error(f"Error fetching report: {response.text}")
+        logging.error(f"QuickBooks Response TID (Error): {intuit_tid}")
         raise Exception(f"Failed to fetch report: {response.status_code} {response.text}")
+
 
 def get_reports():
     """
