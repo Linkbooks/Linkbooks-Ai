@@ -1,12 +1,20 @@
-/* General Reset */
+/* General Flexbox Layout */
 body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; /* Ensures footer stays at the bottom */
+    min-height: 100vh; /* Full viewport height */
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #333;
-    background: linear-gradient(to bottom, #e3e9ed, #f5f7fa);
-    line-height: 1.6;
+    background: linear-gradient(180deg, #f5f7fa, #eaeef3); /* Subtle gradient */
 }
 
+html {
+    scroll-behavior: smooth; /* Smooth scrolling */
+}
+
+/* Header Styling */
 header {
     background: linear-gradient(90deg, #007aff, #5856d6);
     color: #fff;
@@ -21,6 +29,13 @@ header h1 {
     font-weight: 600;
 }
 
+header p {
+    margin-top: 5px;
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Main Content Styling */
 main {
     max-width: 900px;
     margin: 40px auto;
@@ -29,143 +44,74 @@ main {
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
     overflow: hidden;
     animation: fadeIn 1s ease-in-out;
+    padding: 20px; /* Added general padding for main content */
 }
 
 main h2 {
-    background: linear-gradient(90deg, #007aff, #5856d6);
+    background: linear-gradient(90deg, #007aff, #5856d6); /* Blue gradient background */
     color: #fff;
-    margin: 0;
+    margin: 0 -20px; /* Extend to edges of parent container */
     padding: 20px;
     font-size: 1.8rem;
     text-align: center;
     font-weight: 500;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
 }
 
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 30px;
-    text-align: center;
+/* Analysis Page Specific Sections */
+.analysis-section,
+.company-info-section {
+    padding: 20px; /* Ensure space around content */
+    margin-bottom: 20px; /* Add spacing between sections */
+    background: #f9fafb; /* Light background for better visibility */
+    border-radius: 8px; /* Rounded corners */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05); /* Subtle shadow */
 }
 
-.company-title {
-    margin-bottom: 10px;
-    font-weight: 600;
-    color: #333;
-}
-
-.company-info {
-    background: #f9fafb;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-    margin-bottom: 20px;
-}
-
-.company-info pre {
-    background: transparent;
-    text-align: left;
-    padding: 10px;
-    margin: 0;
-    font-family: "SF Mono", "Courier New", monospace;
-    font-size: 0.95rem;
-    color: #444;
-}
-
-button {
-    margin-top: 20px;
-    padding: 12px 24px;
-    font-size: 1rem;
-    color: #fff;
-    background: linear-gradient(90deg, #007aff, #5856d6);
-    border: none;
-    border-radius: 30px;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    transition: all 0.3s ease-in-out;
-}
-
-button:hover {
-    background: linear-gradient(90deg, #5856d6, #007aff);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-    transform: translateY(-2px);
-}
-
-button:focus {
-    outline: 2px solid #007aff;
-    outline-offset: 4px;
-}
-
-footer {
-    text-align: center;
-    padding: 20px 0;
-    background-color: #f9fafb;
-    border-top: 1px solid #ddd;
-}
-
-footer p {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #666;
-}
-
-footer a {
-    color: #007aff;
-    text-decoration: none;
-    margin: 0 10px;
-    transition: color 0.3s ease-in-out;
-}
-
-footer a:hover {
-    color: #004fcc;
-}
-
-/* Analysis Page Specific Styles */
-.analysis-section {
-    margin-bottom: 30px;
-    text-align: center;
-}
-
-.analysis {
-    background-color: #e7f3ff;
-    border-left: 5px solid #007aff;
+.analysis-section blockquote.analysis {
     padding: 15px;
     font-style: italic;
-    font-size: 1.1rem;
-    color: #003366;
+    background: #e7f3ff;
+    border-left: 5px solid #007aff;
     border-radius: 8px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    color: #003366;
 }
 
-.loading-message, .no-data-message {
-    color: #999;
-    font-style: italic;
-    margin-top: 20px;
+.company-info-section pre.company-info {
+    padding: 15px;
+    background: #fff; /* White background for readability */
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: #444;
+    overflow-x: auto; /* Prevent content from spilling out horizontally */
 }
 
-.error-message {
-    background-color: #ffe6e6;
-    padding: 10px;
-    border-radius: 4px;
+.error-section p.error-message {
+    padding: 15px;
+    background: #ffe6e6;
+    border: 1px solid #ffcccc;
+    border-radius: 8px;
     color: red;
     font-weight: bold;
-    margin-top: 20px;
 }
 
+/* Navigation Button Styling */
 .navigation {
-    margin-top: 30px;
+    text-align: center;
+    margin-top: 20px;
 }
 
 .navigation a.button {
-    text-decoration: none;
     display: inline-block;
-    text-align: center;
     padding: 10px 20px;
     font-size: 1rem;
     color: #fff;
     background: linear-gradient(90deg, #007aff, #5856d6);
     border-radius: 30px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    text-decoration: none;
     transition: all 0.3s ease-in-out;
 }
 
@@ -175,15 +121,92 @@ footer a:hover {
     transform: translateY(-2px);
 }
 
-/* Animations */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+/* Modal Styling */
+#modal {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    max-width: 500px;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    animation: fadeIn 0.3s ease-in-out;
 }
 
+#modal-content pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.9rem;
+    color: #444;
+}
+
+#modal button {
+    margin-top: 10px;
+    padding: 10px 20px;
+    background: #007aff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+#modal button:hover {
+    background: #0056d6;
+}
+
+/* Footer Styling */
+footer {
+    text-align: center;
+    padding: 20px 0;
+    color: #777;
+    background: #f9fafb;
+    border-top: 1px solid #ddd;
+    width: 100%; /* Full width */
+    margin-top: auto; /* Pushes footer to bottom dynamically */
+}
+
+footer a {
+    color: #007aff;
+    text-decoration: none;
+    margin: 0 15px; /* Better spacing */
+    transition: color 0.3s ease-in-out;
+}
+
+footer a:hover {
+    color: #004fcc;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+    header h1 {
+        font-size: 2rem;
+    }
+
+    header p, footer p {
+        font-size: 1rem;
+    }
+
+    .button-container {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .button-container a {
+        width: 80%;
+        max-width: 300px;
+    }
+
+    .container {
+        padding: 10px;
+    }
+
+    #modal {
+        width: 90%; /* Compact modal width for small screens */
+    }
+}

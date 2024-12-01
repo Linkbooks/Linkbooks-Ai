@@ -2,16 +2,37 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - QuickBooks GPT App</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" onerror="this.onerror=null; this.href='static/styles.css';">
     <style>
-        /* Custom styles for the dashboard buttons and layout */
+        /* Custom styles for the dashboard */
+        .status-container {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-container h3 {
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .status-container p {
+            font-size: 1.1rem;
+            margin: 5px 0;
+            color: #555;
+        }
+
         .button-container {
             display: flex;
             justify-content: center;
             gap: 20px;
+            flex-wrap: wrap; /* Wrap buttons for smaller screens */
             margin-top: 20px;
         }
 
@@ -34,63 +55,189 @@
             transform: translateY(-2px);
         }
 
-        .company-info pre {
-            background: #f9fafb;
+        #response-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        #response-container button {
+            margin: 5px;
+            padding: 10px 20px;
+            font-size: 0.9rem;
+            color: white;
+            background: linear-gradient(90deg, #007aff, #5856d6);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        #modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%; /* Updated for smaller screens */
+            max-width: 500px;
+            background: white;
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-            font-family: "SF Mono", "Courier New", monospace;
-            font-size: 0.95rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+        }
+
+        #modal-content pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.9rem;
             color: #444;
-            overflow: auto;
-            margin-top: 20px;
-            text-align: left;
         }
 
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        h2 {
-            text-align: center;
-            margin-bottom: 20px;
-            color: #333;
+        #modal button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #007aff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <header>
+        <!-- Add your logo here -->
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo" style="max-width: 80px; margin-bottom: 20px;">
         <h1>QuickBooks GPT App</h1>
     </header>
-    
+
     <main>
         <h2>Dashboard</h2>
         <div class="container">
-            <div class="company-info">
-                <h3 class="company-title">Company Information</h3>
-                <!-- Displaying the company information as JSON -->
-                <pre>{{ data | tojson(indent=2) }}</pre>
+            <!-- Connection Status Section -->
+            <div class="status-container">
+                <h3>Connection Status</h3>
+                <p>QuickBooks: <span id="quickbooks-status">Checking...</span></p>
+                <p>OpenAI: <span id="openai-status">Checking...</span></p>
             </div>
 
-            <!-- Buttons for actions -->
+            <!-- Buttons for Actions -->
             <div class="button-container">
-                <!-- Test OpenAI button -->
-                <button onclick="window.location.href='/test-openai'">Test OpenAI API</button>
-                <!-- Logout button -->
-                <button onclick="window.location.href='{{ url_for('logout') }}'">Logout</button>
+                <button onclick="fetchReports()">List Available Reports</button>
+                <button onclick="testOpenAI()">Test OpenAI API</button>
+                <button onclick="window.location.href='/logout'">Logout</button>
             </div>
+
+            <!-- Response Section -->
+            <div id="response-container"></div>
         </div>
     </main>
-    
+
+    <!-- Modal for Report Details -->
+    <div id="modal">
+        <div id="modal-content"></div>
+        <button onclick="closeModal()">Close</button>
+    </div>
+
     <footer>
         <p>&copy; 2024 WAW Studios | Powered by QuickBooks GPT | 
             <a href="/eula" aria-label="End User License Agreement">EULA</a> | 
             <a href="/privacy-policy" aria-label="Privacy Policy">Privacy Policy</a>
         </p>
     </footer>
-    
-    
+
+    <script>
+        // Check QuickBooks connection status
+        async function checkQuickBooks() {
+            try {
+                const response = await fetch('/business-info');
+                const result = await response.json();
+                if (response.ok) {
+                    document.getElementById('quickbooks-status').innerText = 'Connected';
+                } else {
+                    document.getElementById('quickbooks-status').innerText = 'Disconnected';
+                }
+            } catch {
+                document.getElementById('quickbooks-status').innerText = 'Disconnected';
+            }
+        }
+
+        // Check OpenAI connection status
+        async function checkOpenAI() {
+            try {
+                const response = await fetch('/test-openai');
+                const result = await response.json();
+                if (response.ok) {
+                    document.getElementById('openai-status').innerText = 'Connected';
+                } else {
+                    document.getElementById('openai-status').innerText = 'Disconnected';
+                }
+            } catch {
+                document.getElementById('openai-status').innerText = 'Disconnected';
+            }
+        }
+
+        // Fetch available reports
+        async function fetchReports() {
+            try {
+                const response = await fetch('/list-reports');
+                const result = await response.json();
+                if (response.ok) {
+                    const reportButtons = result.availableReports.map(report => 
+                        `<button onclick="fetchReport('${report}')">${report}</button>`
+                    ).join('');
+                    document.getElementById('response-container').innerHTML = reportButtons;
+                } else {
+                    document.getElementById('response-container').innerText = 'Failed to fetch reports.';
+                }
+            } catch {
+                document.getElementById('response-container').innerText = 'Error fetching reports.';
+            }
+        }
+
+        // Fetch specific report
+        async function fetchReport(reportType) {
+            try {
+                const response = await fetch(`/fetch-reports?reportType=${reportType}`);
+                const result = await response.json();
+                if (response.ok) {
+                    openModal(`<pre>${JSON.stringify(result.data, null, 2)}</pre>`);
+                } else {
+                    alert('Failed to fetch report.');
+                }
+            } catch {
+                alert('Error fetching report.');
+            }
+        }
+
+        // Test OpenAI
+        async function testOpenAI() {
+            try {
+                const response = await fetch('/test-openai');
+                const result = await response.json();
+                if (response.ok) {
+                    alert(result.message);
+                } else {
+                    alert('Failed to connect to OpenAI.');
+                }
+            } catch {
+                alert('Error connecting to OpenAI.');
+            }
+        }
+
+        // Modal Functions
+        function openModal(content) {
+            document.getElementById('modal-content').innerHTML = content;
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Run connection checks on load
+        checkQuickBooks();
+        checkOpenAI();
+    </script>
 </body>
 </html>

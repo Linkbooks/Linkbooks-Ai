@@ -2,24 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QuickBooks GPT App</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" onerror="this.onerror=null; this.href='static/styles.css';">
     <style>
-        /* Styling for buttons */
+        /* Subtle Gradient Background */
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between; /* Ensures content and footer are spaced appropriately */
+            min-height: 100vh; /* Ensures the body takes at least the full viewport height */
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #333;
+        }
+        
+        header {
+            text-align: center;
+            margin-top: 20px; /* Reduced space above the header */
+            padding-bottom: 0px; /* Removed extra padding below */
+        }
+        
+        header img {
+            max-width: 80px;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            font-size: 1.2rem;
+            color: #555;
+        }
+        
         .button-container {
             display: flex;
             justify-content: center;
             gap: 20px;
-            margin-top: 40px;
+            margin-top: 20px; /* Pulls the button closer to the header */
         }
-
-        .button-container a,
-        .button-container button {
-            display: inline-block; /* Ensures consistent behavior for both a and button */
+        
+        .button-container a {
             padding: 15px 30px;
-            font-size: 1rem;
+            font-size: 1.1rem;
             text-align: center;
             text-decoration: none;
             color: white;
@@ -30,39 +59,65 @@
             transition: all 0.3s ease-in-out;
             cursor: pointer;
         }
-
-        .button-container a:hover,
-        .button-container button:hover {
+        
+        .button-container a:hover {
             background: linear-gradient(90deg, #5856d6, #007aff);
             box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-            transform: translateY(-2px);
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px 0;
+            color: #777;
+            background: #f9fafb;
+            border-top: 1px solid #ddd;
+            width: 100%; /* Ensures footer spans the full width */
+            margin-top: auto; /* Pushes the footer to the bottom dynamically */
+        }
+        
+        footer p {
+            font-size: 0.9rem;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 600px) {
+            header h1 {
+                font-size: 2rem;
+            }
+        
+            header p {
+                font-size: 1rem;
+            }
+        
+            .button-container {
+                flex-direction: column;
+                gap: 15px;
+            }
+        
+            .button-container a {
+                width: 80%;
+                max-width: 300px;
+            }        
         }
     </style>
 </head>
 <body>
     <header>
-        <h1>Welcome to the QuickBooks GPT App!</h1>
+        <!-- Add your logo here -->
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo">
+        <h1>QuickBooks GPT App</h1>
+        <p>Effortlessly analyze your QuickBooks data with AI-powered insights.</p>
     </header>
-    
+
     <main>
         <div class="button-container">
-            <!-- Login button -->
+            <!-- Login Button -->
             <a href="{{ url_for('login') }}" class="button">Login with QuickBooks</a>
-            <!-- Test OpenAI button -->
-            <button class="button" onclick="window.location.href='/test-openai'">Test OpenAI API</button>
         </div>
     </main>
-    
-    <footer class="footer">
-        <div class="container">
-            <p>&copy; 2024 <strong>WAW Studios Ltd</strong>. All rights reserved.</p>
-            <nav aria-label="Footer navigation">
-                <ul class="footer-links">
-                    <li><a href="/privacy-policy" aria-label="Privacy Policy">Privacy Policy</a></li>
-                    <li><a href="/contact" aria-label="Contact Us">Contact Us</a></li>
-                </ul>
-            </nav>
-        </div>
+
+    <footer>
+        <p>&copy; 2024 WAW Studios Ltd. All rights reserved.</p>
     </footer>
 </body>
 </html>

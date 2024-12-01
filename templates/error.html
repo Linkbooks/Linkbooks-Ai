@@ -4,22 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Error</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" onerror="this.onerror=null; this.href='/static/styles.css';">
 </head>
 <body>
-    <h1>Error</h1>
-    <p>{{ message }}</p>
+    <header>
+        <h1>Error</h1>
+    </header>
 
-    <footer class="footer">
+    <main>
         <div class="container">
-            <p>&copy; 2024 <strong>WAW Studios Ltd</strong>. All rights reserved.</p>
-            <nav aria-label="Footer navigation">
-                <ul class="footer-links">
-                    <li><a href="/privacy-policy" aria-label="Privacy Policy">Privacy Policy</a></li>
-                    <li><a href="/contact" aria-label="Contact Us">Contact Us</a></li>
-                </ul>
-            </nav>
+            <p>{{ message or "An unknown error occurred." }}</p>
         </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 WAW Studios Ltd. All rights reserved.</p>
+        <nav>
+            <ul>
+                <li><a href="/privacy-policy" aria-label="Privacy Policy">Privacy Policy</a></li>
+                <li><a href="/contact" aria-label="Contact Us">Contact Us</a></li>
+            </ul>
+        </nav>
     </footer>
-    
 </body>
 </html>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Company Analysis</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" onerror="this.onerror=null; this.href='/static/styles.css';">
 </head>
 <body>
     <header>
@@ -42,7 +42,7 @@
     </main>
 
     <footer>
-        <p>&copy; 2024 WAW Studios | Powered by QuickBooks GPT</p>
+        <p>&copy; 2024 WAW Studios Ltd. All rights reserved.</p>
     </footer>
 </body>
 </html>
