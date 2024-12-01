@@ -38,7 +38,7 @@ CLIENT_SECRET = os.getenv('QB_CLIENT_SECRET')
 REDIRECT_URI = os.getenv('REDIRECT_URI', "http://localhost:5000/callback")
 AUTHORIZATION_BASE_URL = "https://appcenter.intuit.com/connect/oauth2"
 TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
-SCOPE = "com.intuit.quickbooks.accounting"
+SCOPE = "com.intuit.quickbooks.accounting com.intuit.quickbooks.payment"
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
