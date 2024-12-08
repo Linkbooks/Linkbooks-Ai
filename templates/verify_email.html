@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 400px;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+        .button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #42AC68;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .button:hover {
+            background-color: #468763;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% if success %}
+            <h1 class="success">Email Verified Successfully!</h1>
+            <p>You can now log in to your account.</p>
+            <a href="/login" class="button">Log In</a>
+        {% else %}
+            <h1 class="error">Email Verification Failed</h1>
+            <p>It seems the verification token is invalid or has expired.</p>
+            <p>If you need a new verification link, click the button below.</p>
+            <a href="/resend-verification" class="button">Resend Verification Email</a>
+        {% endif %}
+    </div>
+</body>
+</html>

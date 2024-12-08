@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Account - QuickBooks GPT App</title>
+    <!-- Link to the shared stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" onerror="this.onerror=null; this.href='static/styles.css';">
+    <style>
+        /* Styles for success and error messages */
+        .message {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        /* Hide messages by default */
+        .hidden {
+            display: none;
+        }
+        /* Loading spinner styles */
+        .loading-spinner {
+            display: none;
+            margin-left: 10px;
+            font-size: 1.2em;
+        }
+        /* Optional: Style for processing form */
+        .processing {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="create-account-page">
+    <header>
+        <a href="/" class="header-link">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo" class="logo" style="max-width:80px; margin-bottom:20px;">
+            <h1>QuickBooks GPT App</h1>
+        </a>
+        <p>Create your account to get started.</p>
+    </header>
+
+    <main>
+        <div class="container form-container">
+            <h2>Create an Account</h2>
+
+            <!-- Success Message Container -->
+            <div id="success-message" class="message success-message hidden" role="alert">
+                <h3>Account Created Successfully!</h3>
+                <p>A verification email has been sent to your email address. Please check your inbox to verify your account.</p>
+                <a href="/login" class="button">Go to Login</a>
+            </div>
+
+            <!-- Error Message Container -->
+            <div id="error-message" class="message error-message hidden" role="alert">
+                <p id="error-text"></p>
+            </div>
+
+            <!-- Registration Form -->
+            <form id="create-account-form" method="POST">
+                <div class="input-group">
+                    <label for="name">Full Name:</label>
+                    <input type="text" id="name" name="name" required class="input-field" aria-required="true">
+                </div>
+
+                <div class="input-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required class="input-field" aria-required="true">
+                </div>
+
+                <div class="input-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" name="password" required class="input-field" aria-required="true">
+                </div>
+
+                <div class="input-group">
+                    <label for="confirm_password">Confirm Password:</label>
+                    <input type="password" id="confirm_password" name="confirm_password" required class="input-field" aria-required="true">
+                </div>
+
+                <div class="input-group">
+                    <label for="phone">Phone Number:</label>
+                    <input type="tel" id="phone" name="phone" class="input-field">
+                </div>
+
+                <div class="input-group">
+                    <label for="address">Address:</label>
+                    <textarea id="address" name="address" rows="3" class="input-field"></textarea>
+                </div>
+
+                <button type="submit" class="button" aria-label="Create Account">Create Account</button>
+                <span class="loading-spinner hidden" id="loading-spinner" aria-hidden="true">⏳</span>
+            </form>
+
+            <p class="form-note">Already have an account? <a href="/login" class="link">Log in</a></p>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 WAW Studios | Powered by QuickBooks GPT | 
+            <a href="/eula" aria-label="End User License Agreement">EULA</a> | 
+            <a href="/privacy-policy" aria-label="Privacy Policy">Privacy Policy</a>
+        </p>
+        <div class="navigation">
+            <a href="/" class="button">Back to Homepage</a>
+        </div>
+    </footer>
+
+    <!-- JavaScript for Enhanced Functionality -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Handle Form Submission with AJAX
+            const form = document.getElementById("create-account-form");
+            const submitButton = form.querySelector("button[type='submit']");
+            const spinner = document.getElementById("loading-spinner");
+            const errorMessageDiv = document.getElementById("error-message");
+            const errorText = document.getElementById("error-text");
+            const successMessageDiv = document.getElementById("success-message");
+
+            form.addEventListener("submit", function (e) {
+                e.preventDefault(); // Prevent the default form submission
+
+                // Clear previous messages
+                errorMessageDiv.classList.add("hidden");
+                errorText.textContent = "";
+                successMessageDiv.classList.add("hidden");
+
+                // Show loading spinner and disable submit button
+                submitButton.disabled = true;
+                spinner.classList.remove("hidden");
+                form.classList.add("processing"); // Optional: Apply processing styles
+
+                // Gather form data
+                const formData = new FormData(form);
+
+                // Send AJAX request
+                fetch("/create-account", {
+                    method: "POST",
+                    body: formData,
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(data => {
+                            throw data;
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Hide loading spinner and enable submit button
+                    spinner.classList.add("hidden");
+                    submitButton.disabled = false;
+                    form.classList.remove("processing"); // Remove processing styles
+
+                    if (data.success) {
+                        // Hide the form and show the success message
+                        form.classList.add("hidden");
+                        successMessageDiv.classList.remove("hidden");
+                        // Optionally, reset the form
+                        form.reset();
+                    } else {
+                        // Show the error message
+                        errorMessageDiv.classList.remove("hidden");
+                        errorText.textContent = data.error_message;
+                    }
+                })
+                .catch(error => {
+                    // Hide loading spinner and enable submit button
+                    spinner.classList.add("hidden");
+                    submitButton.disabled = false;
+                    form.classList.remove("processing"); // Remove processing styles
+
+                    // Show error message
+                    if (error && error.error_message) {
+                        errorMessageDiv.classList.remove("hidden");
+                        errorText.textContent = error.error_message;
+                    } else {
+                        // Show a generic error message
+                        errorMessageDiv.classList.remove("hidden");
+                        errorText.textContent = "An unexpected error occurred. Please try again.";
+                    }
+                    console.error("Error:", error);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

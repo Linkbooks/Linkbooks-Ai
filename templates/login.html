@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log In - QuickBooks GPT App</title>
+    <!-- Link to the shared stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" onerror="this.onerror=null; this.href='static/styles.css';">
+</head>
+<body class="login-page">
+    <header>
+        <a href="/" class="header-link">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo" class="logo">
+            <h1>QuickBooks GPT App</h1>
+        </a>
+        <p>Welcome back! Please log in to your account.</p>
+    </header>
+
+    <main>
+        <div class="container form-container">
+            <h2>Log In</h2>
+            <form action="/login" method="POST">
+                <div class="input-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required class="input-field" aria-label="Email address" title="Enter your email address here">
+                </div>
+
+                <div class="input-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" name="password" required class="input-field" aria-label="Password" title="Password must be at least 6 characters">
+                    <span id="togglePassword" class="password-toggle" aria-label="Toggle Password Visibility">👁️</span>
+                    <span class="tooltip-icon" title="Password must be at least 6 characters">?</span>
+                </div>
+
+                <button type="submit" class="button" aria-label="Log in to your account">Log In</button>
+                <span class="loading-spinner">⏳</span>
+            </form>
+
+            <div id="progressive-forgot-password" class="progressive-forgot-password">
+                <a href="/forgot-password" class="link">Forgot Password?</a>
+            </div>
+
+            <p class="form-note">Don't have an account? <a href="/create-account" class="link">Create one</a></p>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 WAW Studios | Powered by QuickBooks GPT | 
+            <a href="/eula" aria-label="End User License Agreement">EULA</a> | 
+            <a href="/privacy-policy" aria-label="Privacy Policy">Privacy Policy</a>
+        </p>
+        <div class="navigation">
+            <a href="/" class="button">Back to Homepage</a>
+        </div>
+    </footer>
+
+    <!-- Modal Popup for Error Messages -->
+{% if error_message %}
+<div id="error-modal" class="modal" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+    <div class="modal-content" tabindex="-1">
+        <span class="close-button" aria-label="Close Modal">&times;</span>
+        <p id="modal-title">{{ error_message }}</p>
+    </div>
+</div>
+{% endif %}
+
+
+    <!-- JavaScript for Enhanced Functionality -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Password Toggle Functionality
+            const passwordInput = document.getElementById("password");
+            const passwordToggle = document.getElementById("togglePassword");
+
+            passwordToggle.addEventListener("click", function () {
+                if (passwordInput.type === "password") {
+                    passwordInput.type = "text";
+                    passwordToggle.textContent = "🙈";
+                } else {
+                    passwordInput.type = "password";
+                    passwordToggle.textContent = "👁️";
+                }
+            });
+
+            // Form Submission with Loading Spinner
+            const form = document.querySelector("form");
+            const submitButton = document.querySelector("button[type='submit']");
+            const spinner = document.querySelector(".loading-spinner");
+
+            form.addEventListener("submit", function (e) {
+                // Optional: Add client-side validation if needed
+                // Example: Check for password length
+                if (passwordInput.value.length < 6) {
+                    alert("Password must be at least 6 characters!");
+                    e.preventDefault();
+                    return;
+                }
+
+                // Show loading spinner and disable submit button
+                submitButton.disabled = true;
+                spinner.classList.add("loading");
+            });
+
+            // Modal Functionality
+            const modal = document.getElementById("error-modal");
+            const closeButton = document.querySelector(".close-button");
+
+            if (modal) {
+                // Show the modal with transition
+                modal.classList.add("show");
+                modal.style.display = "block"; // Ensure the modal is visible
+
+                // Focus management
+                modal.setAttribute('tabindex', '-1');
+                modal.focus();
+
+                // Close modal when clicking the close button
+                closeButton.addEventListener("click", function () {
+                    modal.classList.remove("show");
+                    setTimeout(() => { modal.style.display = "none"; }, 300); // Wait for transition
+                });
+
+                // Close modal when clicking outside the modal content
+                window.addEventListener("click", function (event) {
+                    if (event.target == modal) {
+                        modal.classList.remove("show");
+                        setTimeout(() => { modal.style.display = "none"; }, 300); // Wait for transition
+                    }
+                });
+
+                // Close modal with the Esc key
+                window.addEventListener("keydown", function (event) {
+                    if (event.key === "Escape") {
+                        modal.classList.remove("show");
+                        setTimeout(() => { modal.style.display = "none"; }, 300); // Wait for transition
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,3 +1,28 @@
+/*----------------------------------------------------------
+   Global Reset for different browser compatibility 
+-----------------------------------------------------------*/
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body, h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd {
+    margin: 0;
+    padding: 0;
+}
+
+ul, ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+
 /* General Flexbox Layout */
 body {
     display: flex;
@@ -8,34 +33,78 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #333;
     background: linear-gradient(180deg, #f5f7fa, #eaeef3); /* Subtle gradient */
+    line-height: 1.5; /* Improved readability */
 }
 
 html {
     scroll-behavior: smooth; /* Smooth scrolling */
 }
 
-/* Header Styling */
+/*--------------------------------------------------------------
+   Global html rules
+---------------------------------------------------------------*/
+
+/* Allow underlines by default */
+a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+/* Remove underlines and inherit color for header links */
+header a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* Specific styling for header images to override global img display */
+header img {
+    display: inline-block; /* Override global block display */
+    margin: 0 auto; /* Center the image */
+}
+
+
+/* -------------------------------------------------------------
+   INDEX PAGE SPECIFIC STYLES
+------------------------------------------------------------- */
+.index-page header img {
+    max-width: 150px;
+    margin-top: 35px;
+    margin-bottom: -5px;
+}
+
+
+/* -------------------------------------------------------------
+   HEADER STYLING (MAIN, GENERIC)
+------------------------------------------------------------- */
 header {
-    background: linear-gradient(90deg, #007aff, #5856d6);
-    color: #fff;
     text-align: center;
-    padding: 20px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    margin-top: 20px;
+    padding-bottom: 0;
+    box-shadow: none;
+    background: none;
+}
+
+header .logo {
+    max-width: 80px;
+    margin-top: 20px;
+    margin-bottom: -5px;
 }
 
 header h1 {
-    margin: 0;
     font-size: 2.5rem;
-    font-weight: 600;
+    margin-bottom: 0px;
 }
 
 header p {
-    margin-top: 5px;
     font-size: 1.2rem;
-    color: rgba(255, 255, 255, 0.85);
+    color: #555;
+    margin-bottom: -5px;
 }
 
-/* Main Content Styling */
+
+/* -------------------------------------------------------------
+   MAIN CONTENT STYLING
+------------------------------------------------------------- */
 main {
     max-width: 900px;
     margin: 40px auto;
@@ -44,50 +113,270 @@ main {
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
     overflow: hidden;
     animation: fadeIn 1s ease-in-out;
-    padding: 20px; /* Added general padding for main content */
-}
-
-main h2 {
-    background: linear-gradient(90deg, #007aff, #5856d6); /* Blue gradient background */
-    color: #fff;
-    margin: 0 -20px; /* Extend to edges of parent container */
     padding: 20px;
-    font-size: 1.8rem;
     text-align: center;
-    font-weight: 500;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
 }
 
-/* Analysis Page Specific Sections */
+.container.form-container {
+    margin: 0 auto;
+    text-align: left; 
+    max-width: 600px; /* Wider than default to give the form more space */
+    width: 90%;
+}
+
+.form-container h2 {
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+/*----------------------------------------------------------
+   INPUT GROUP STYLING
+-----------------------------------------------------------*/
+.input-group {
+    position: relative;
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.input-group label {
+    display: inline-block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+
+/* -------------------------------------------------------------
+   INPUT FIELD STYLES
+------------------------------------------------------------- */
+.input-field {
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0;
+    box-sizing: border-box;
+    border: 2px solid #42AC68;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-size: 1rem;
+}
+
+.input-field:focus {
+    border-color: #468763;
+    box-shadow: 0 0 8px rgba(66, 172, 104, 0.5);
+    outline: none;
+}
+
+
+/*----------------------------------------------------------
+   PASSWORD TOGGLE STYLING
+-----------------------------------------------------------*/
+.password-toggle {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    font-size: 1.2rem;
+}
+
+
+/*----------------------------------------------------------
+   TOOLTIP STYLING
+-----------------------------------------------------------*/
+.tooltip-icon {
+    margin-left: 8px;
+    cursor: pointer;
+    color: #468763;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+
+/* -------------------------------------------------------------
+   BUTTON STYLING
+------------------------------------------------------------- */
+.button {
+    display: inline-block;
+    padding: 10px 20px;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #468763;
+    background: #fff;
+    border: 1px solid #468763;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: background 0.3s ease, color 0.3s ease;
+    cursor: pointer;
+}
+
+.button:hover,
+.button:focus {
+    background: #468763;
+    color: #fff;
+}
+
+
+/* -------------------------------------------------------------
+   FORM NOTE STYLING
+------------------------------------------------------------- */
+.form-note {
+    margin-top: 20px;
+    font-size: 0.95rem;
+    text-align: center;
+}
+
+.form-note .link {
+    color: #42AC68;
+    text-decoration: underline; /* Ensure underlines for specific links */
+}
+
+.form-note .link:hover {
+    text-decoration: underline;
+}
+
+
+/*----------------------------------------------------------
+   PROGRESSIVE FORGOT PASSWORD STYLING
+-----------------------------------------------------------*/
+.progressive-forgot-password .link {
+    text-decoration: underline; /* Ensure underlines for specific links */
+}
+
+.progressive-forgot-password .link:hover {
+    text-decoration: underline;
+}
+
+
+/*----------------------------------------------------------
+   LOADING SPINNER STYLING
+-----------------------------------------------------------*/
+.loading-spinner {
+    display: none;
+    margin-left: 10px;
+    font-size: 1.5rem;
+}
+
+.loading-spinner.loading {
+    display: inline-block;
+}
+
+
+/* -------------------------------------------------------------
+   CREATE ACCOUNT PAGE STYLING
+------------------------------------------------------------- */
+.create-account-page main {
+    max-width: 900px;
+    margin: 40px auto;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    animation: fadeIn 1s ease-in-out;
+    padding: 20px;
+    text-align: center;
+}
+
+.create-account-page .form-container {
+    margin: 0 auto;
+    text-align: left; 
+    max-width: 600px; /* Wider than default to give the form more space */
+    width: 90%;
+}
+
+.create-account-page .form-container h2 {
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.create-account-page .input-group {
+    margin-bottom: 20px;
+}
+
+.create-account-page .input-group label {
+    display: inline-block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.create-account-page .input-field {
+    width: 100%;
+    padding: 12px;
+    box-sizing: border-box;
+    border: 2px solid #42AC68;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-size: 1rem;
+}
+
+.create-account-page .input-field:focus {
+    border-color: #468763;
+    box-shadow: 0 0 8px rgba(66, 172, 104, 0.5);
+    outline: none;
+}
+
+.create-account-page .form-note {
+    margin-top: 20px;
+    font-size: 0.95rem;
+    text-align: center;
+}
+
+.create-account-page .form-note .link {
+    color: #42AC68;
+    text-decoration: none;
+}
+
+.create-account-page .form-note .link:hover {
+    text-decoration: underline;
+}
+
+/* Responsive adjustments for the create account page */
+@media (max-width: 600px) {
+    .create-account-page main {
+        margin: 20px;
+        padding: 15px;
+    }
+
+    .create-account-page .form-container {
+        width: 100%;
+        padding: 10px;
+    }
+}
+
+
+/* -------------------------------------------------------------
+   ANALYSIS PAGE SECTIONS
+------------------------------------------------------------- */
 .analysis-section,
 .company-info-section {
-    padding: 20px; /* Ensure space around content */
-    margin-bottom: 20px; /* Add spacing between sections */
-    background: #f9fafb; /* Light background for better visibility */
-    border-radius: 8px; /* Rounded corners */
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+    padding: 20px;
+    margin-bottom: 20px;
+    background: #f9fafb;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
 }
 
 .analysis-section blockquote.analysis {
     padding: 15px;
     font-style: italic;
     background: #e7f3ff;
-    border-left: 5px solid #007aff;
+    border-left: 5px solid #42AC68;
     border-radius: 8px;
     color: #003366;
 }
 
 .company-info-section pre.company-info {
     padding: 15px;
-    background: #fff; /* White background for readability */
+    background: #fff;
     border: 1px solid #ddd;
     border-radius: 8px;
     font-size: 0.95rem;
     color: #444;
-    overflow-x: auto; /* Prevent content from spilling out horizontally */
+    overflow-x: auto;
 }
 
+
+/* -------------------------------------------------------------
+   ERROR SECTION
+------------------------------------------------------------- */
 .error-section p.error-message {
     padding: 15px;
     background: #ffe6e6;
@@ -97,116 +386,118 @@ main h2 {
     font-weight: bold;
 }
 
-/* Navigation Button Styling */
+
+/* -------------------------------------------------------------
+   NAVIGATION BUTTON STYLING
+------------------------------------------------------------- */
 .navigation {
     text-align: center;
     margin-top: 20px;
 }
 
-.navigation a.button {
-    display: inline-block;
-    padding: 10px 20px;
-    font-size: 1rem;
-    color: #fff;
-    background: linear-gradient(90deg, #007aff, #5856d6);
-    border-radius: 30px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+.navigation .button {
     text-decoration: none;
-    transition: all 0.3s ease-in-out;
 }
 
-.navigation a.button:hover {
-    background: linear-gradient(90deg, #5856d6, #007aff);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-    transform: translateY(-2px);
-}
 
-/* Modal Styling */
-#modal {
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 80%;
-    max-width: 500px;
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    z-index: 1000;
+/* -------------------------------------------------------------
+   MODAL STYLING
+------------------------------------------------------------- */
+/*----------------------------------------------------------
+   MODAL STYLING FOR ERROR-MODAL
+-----------------------------------------------------------*/
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 1000; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
     animation: fadeIn 0.3s ease-in-out;
 }
 
-#modal-content pre {
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    font-size: 0.9rem;
-    color: #444;
+.modal-content {
+    background-color: #fff;
+    margin: 15% auto; /* 15% from the top and centered */
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 400px;
+    border-radius: 8px;
+    position: relative;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    opacity: 0;
+    transform: translateY(-50px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-#modal button {
-    margin-top: 10px;
-    padding: 10px 20px;
-    background: #007aff;
-    color: white;
-    border: none;
-    border-radius: 5px;
+.modal.show .modal-content {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
     cursor: pointer;
-    transition: background 0.3s ease;
 }
 
-#modal button:hover {
-    background: #0056d6;
-}
-
-/* Footer Styling */
-footer {
-    text-align: center;
-    padding: 20px 0;
-    color: #777;
-    background: #f9fafb;
-    border-top: 1px solid #ddd;
-    width: 100%; /* Full width */
-    margin-top: auto; /* Pushes footer to bottom dynamically */
-}
-
-footer a {
-    color: #007aff;
+.close-button:hover,
+.close-button:focus {
+    color: #000;
     text-decoration: none;
-    margin: 0 15px; /* Better spacing */
-    transition: color 0.3s ease-in-out;
 }
 
-footer a:hover {
-    color: #004fcc;
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-/* Responsive Design */
+/* Accessible Modal Styling */
+.modal:focus {
+    outline: none;
+}
+
+.modal-content:focus {
+    outline: none;
+}
+
+
+/*----------------------------------------------------------
+   RESPONSIVE DESIGN
+-----------------------------------------------------------*/
 @media (max-width: 600px) {
-    header h1 {
+    .app-title {
         font-size: 2rem;
     }
 
-    header p, footer p {
+    .app-description, .footer-bar p {
         font-size: 1rem;
     }
 
     .button-container {
+        display: flex;
         flex-direction: column;
-        gap: 15px;
+        align-items: center;
     }
 
-    .button-container a {
+    .button {
         width: 80%;
         max-width: 300px;
+        margin: 15px 0;
     }
 
     .container {
         padding: 10px;
     }
 
+    /* Adjust modal width on small screens */
     #modal {
-        width: 90%; /* Compact modal width for small screens */
+        width: 90%;
     }
 }

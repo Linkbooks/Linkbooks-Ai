@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Confirmation - QuickBooks GPT App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" onerror="this.onerror=null; this.href='static/styles.css';">
+    <style>
+        /* Custom styles for the confirmation page */
+        .confirmation-container {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 40px;
+            background: #f9fafb;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 1s ease-in-out;
+        }
+
+        .confirmation-container h2 {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #ffffff; /* Changed color to #333 for better contrast */
+            margin-bottom: 20px;
+        }
+
+        .confirmation-container p {
+            font-size: 1.1rem;
+            margin: 10px 0;
+            color: #555;
+        }
+
+        .navigation a.button {
+            display: inline-block;
+            padding: 15px 30px;
+            font-size: 1rem;
+            color: #fff;
+            background: linear-gradient(90deg, #42AC68, #468763);
+            border-radius: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            text-decoration: none;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .navigation a.button:hover {
+            background: linear-gradient(90deg, #468763, #42AC68);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+            transform: translateY(-2px);
+        }
+
+        header {
+            text-align: center;
+            background: linear-gradient(90deg, #42AC68, #468763);
+            color: #fff;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: #fff; /* Ensure header text is white */
+        }
+
+        header p {
+            margin-top: 5px;
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.85);
+        }
+
+        header img {
+            display: block;
+            margin: 0 auto 20px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <!-- Add your logo here -->
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo" style="max-width: 80px;">
+        <h1>QuickBooks GPT App</h1>
+        <p>Your journey with us starts now.</p>
+    </header>
+
+    <main>
+        <div class="confirmation-container">
+            <h2>Account Verification Successful</h2>
+            <p>We are thrilled to have you on board! Your account has been successfully verified, and you can now enjoy all the features we have to offer.</p>
+            <div class="navigation">
+                <a href="/login" class="button">Log in to Your Account</a>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 WAW Studios | Powered by QuickBooks GPT | 
+            <a href="/eula" aria-label="End User License Agreement">EULA</a> | 
+            <a href="/privacy-policy" aria-label="Privacy Policy">Privacy Policy</a>
+        </p>
+    </footer>
+</body>
+</html>
