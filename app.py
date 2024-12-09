@@ -567,6 +567,12 @@ def create_account():
         logging.warning("Account creation failed: Passwords do not match.")
         return jsonify({"success": False, "error_message": error_message}), 400
 
+    # Validate password length
+    if len(password) < 6:
+        error_message = "Password must be at least 6 characters long."
+        logging.warning(f"Account creation failed: Password too short for email {email}.")
+        return jsonify({"success": False, "error_message": error_message}), 400
+
     # Check for an existing account in the `users` table
     try:
         response = supabase.table("users").select("id").eq("email", email).execute()
@@ -589,25 +595,23 @@ def create_account():
             logging.info(f"User created in Supabase Auth with ID: {user_id}")
         else:
             error_message = "Failed to create user in authentication system."
-            # Attempt to extract more error information
-            if hasattr(auth_response, 'error_description') and auth_response.error_description:
-                error_message = auth_response.error_description
-            elif hasattr(auth_response, 'error') and auth_response.error:
-                error_message = auth_response.error
             logging.error(f"Auth error: {error_message}")
             return jsonify({"success": False, "error_message": error_message}), 400
 
     except AuthApiError as e:
-        # Handle Supabase Auth API errors
         logging.error(f"AuthApiError during sign_up: {e}", exc_info=True)
-        if 'rate limit' in str(e).lower():
+        error_msg = str(e).lower()
+        if 'password should be at least 6 characters' in error_msg:
+            error_message = "Password must be at least 6 characters long."
+        elif 'user already registered' in error_msg:
+            error_message = "An account with that email already exists."
+        elif 'rate limit' in error_msg:
             error_message = "You have reached the maximum number of sign-up attempts. Please try again later."
-            return jsonify({"success": False, "error_message": error_message}), 429  # 429 Too Many Requests
+            return jsonify({"success": False, "error_message": error_message}), 429
         else:
             error_message = "An error occurred during account creation."
-            return jsonify({"success": False, "error_message": error_message}), 400
+        return jsonify({"success": False, "error_message": error_message}), 400
     except Exception as e:
-        # Handle other exceptions
         logging.error(f"Exception during sign_up: {e}", exc_info=True)
         error_message = "An unexpected error occurred during account creation."
         return jsonify({"success": False, "error_message": error_message}), 500
@@ -632,6 +636,7 @@ def create_account():
     # All steps succeeded, send success response
     success_message = "Account created successfully! A verification email has been sent to your email address. Please check your inbox to verify your account."
     return jsonify({"success": True, "success_message": success_message}), 200
+
 
     
 @app.route('/confirmation')
