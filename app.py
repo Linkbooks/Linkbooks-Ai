@@ -65,11 +65,15 @@ limiter.init_app(app)  # Attach the limiter to the Flask app
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 try:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY, timeout=30)
     logging.info("Supabase client initialized successfully.")
 except Exception as e:
     logging.error(f"Error initializing Supabase client: {e}")
     supabase = None
+
+# Check if Supabase client was initialized successfully
+if supabase is None:
+    logging.error("Supabase client is not initialized. Check SUPABASE_URL and SUPABASE_KEY.")
 
 # QuickBooks OAuth Configuration
 CLIENT_ID = os.getenv('QB_CLIENT_ID')
@@ -736,32 +740,45 @@ def callback():
             token_expiry=expiry
         )
 
-        return {"message": "QuickBooks authorization successful"}, 200
+        logging.info(f"QuickBooks authorization successful for user {user_id}")
+
+        # Redirect to dashboard with success query parameter
+        return redirect(url_for('dashboard') + "?quickbooks_login_success=true")
+
     except Exception as e:
         logging.error(f"Error in /callback: {e}")
         return {"error": str(e)}, 500
 
 
+
 @app.route('/dashboard')
 def dashboard():
     try:
+        # Check for the QuickBooks login success flag
+        success_message = request.args.get('quickbooks_login_success')
+
         if DEV_MODE:
             # In dev mode, skip token check and set a mock user email
             user_email = "dev_user@example.com"
+            logging.info("DEV_MODE is enabled. Using mock user email.")
         else:
             # Production mode: perform token check manually
             token = request.headers.get("Authorization")
             if not token:
+                logging.warning("Unauthorized access attempt: Missing token.")
                 return {"error": "Unauthorized, missing token"}, 401
-            
+
             try:
                 decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
                 user_email = decoded.get("email")
                 if not user_email:
+                    logging.warning("Invalid token payload: No email found.")
                     return {"error": "Invalid token payload, no email"}, 401
             except jwt.ExpiredSignatureError:
+                logging.warning("Token has expired.")
                 return {"error": "Token has expired"}, 401
             except jwt.InvalidTokenError:
+                logging.warning("Invalid token provided.")
                 return {"error": "Invalid token"}, 401
 
         # Now that we have user_email (from either dev mode or token), proceed as before
@@ -775,10 +792,14 @@ def dashboard():
 
         # Fetch QuickBooks company info as an example
         company_info = get_company_info()
-        return render_template('dashboard.html', data=company_info)
+        
+        # Render the dashboard with optional success message
+        return render_template('dashboard.html', data=company_info, success_message=success_message)
+
     except Exception as e:
-        logging.error(f"Error in /dashboard: {e}")
+        logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
+
 
 
     

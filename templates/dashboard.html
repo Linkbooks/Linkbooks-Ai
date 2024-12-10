@@ -114,6 +114,14 @@
     <main>
         <h2>Dashboard</h2>
         <div class="container">
+
+            <!-- Display Success Message -->
+            {% if success_message %}
+            <div class="message success-message">
+            <p>QuickBooks authorization successful!</p>
+            </div>
+            {% endif %}
+
             <!-- Connection Status Section -->
             <div class="status-container">
                 <h3>Connection Status</h3>
@@ -126,6 +134,8 @@
                 <button onclick="fetchReports()">List Available Reports</button>
                 <button onclick="testOpenAI()">Test OpenAI API</button>
                 <button onclick="window.location.href='/logout'">Logout</button>
+                <!-- New QuickBooks Login Button -->
+                <button id="quickbooks-login-button" onclick="window.location.href='/quickbooks-login'" style="display: none;">Log in with QuickBooks</button>
             </div>
 
             <!-- Response Section -->
@@ -156,9 +166,11 @@
                     document.getElementById('quickbooks-status').innerText = 'Connected';
                 } else {
                     document.getElementById('quickbooks-status').innerText = 'Disconnected';
+                    document.getElementById('quickbooks-login-button').style.display = 'inline-block';
                 }
             } catch {
                 document.getElementById('quickbooks-status').innerText = 'Disconnected';
+                document.getElementById('quickbooks-login-button').style.display = 'inline-block';
             }
         }
 
@@ -175,64 +187,6 @@
             } catch {
                 document.getElementById('openai-status').innerText = 'Disconnected';
             }
-        }
-
-        // Fetch available reports
-        async function fetchReports() {
-            try {
-                const response = await fetch('/list-reports');
-                const result = await response.json();
-                if (response.ok) {
-                    const reportButtons = result.availableReports.map(report => 
-                        `<button onclick="fetchReport('${report}')">${report}</button>`
-                    ).join('');
-                    document.getElementById('response-container').innerHTML = reportButtons;
-                } else {
-                    document.getElementById('response-container').innerText = 'Failed to fetch reports.';
-                }
-            } catch {
-                document.getElementById('response-container').innerText = 'Error fetching reports.';
-            }
-        }
-
-        // Fetch specific report
-        async function fetchReport(reportType) {
-            try {
-                const response = await fetch(`/fetch-reports?reportType=${reportType}`);
-                const result = await response.json();
-                if (response.ok) {
-                    openModal(`<pre>${JSON.stringify(result.data, null, 2)}</pre>`);
-                } else {
-                    alert('Failed to fetch report.');
-                }
-            } catch {
-                alert('Error fetching report.');
-            }
-        }
-
-        // Test OpenAI
-        async function testOpenAI() {
-            try {
-                const response = await fetch('/test-openai');
-                const result = await response.json();
-                if (response.ok) {
-                    alert(result.message);
-                } else {
-                    alert('Failed to connect to OpenAI.');
-                }
-            } catch {
-                alert('Error connecting to OpenAI.');
-            }
-        }
-
-        // Modal Functions
-        function openModal(content) {
-            document.getElementById('modal-content').innerHTML = content;
-            document.getElementById('modal').style.display = 'block';
-        }
-
-        function closeModal() {
-            document.getElementById('modal').style.display = 'none';
         }
 
         // Run connection checks on load
