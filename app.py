@@ -21,6 +21,9 @@ from flask_limiter.util import get_remote_address
 if os.getenv("FLASK_ENV") == "development":
     load_dotenv()
 
+# Determine if in development mode
+DEV_MODE = os.getenv("FLASK_ENV", "production") == "development"
+
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("JWT_SECRET_KEY environment variable is missing.")
@@ -35,18 +38,24 @@ logging.basicConfig(
 logging.info(f"Running in {os.getenv('FLASK_ENV', 'unknown')} mode.")
 
 # Validate critical environment variables early
-required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY', 'QB_CLIENT_ID', 'QB_CLIENT_SECRET', 'FLASK_SECRET_KEY']
+required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY', 'FLASK_SECRET_KEY']
+
+if DEV_MODE:
+    required_env_vars.extend(['QB_SANDBOX_CLIENT_ID', 'QB_SANDBOX_CLIENT_SECRET'])
+else:
+    required_env_vars.extend(['QB_PROD_CLIENT_ID', 'QB_PROD_CLIENT_SECRET'])
+
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 if missing_vars:
     raise RuntimeError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
+
 
 print("Loaded Environment Variables:")
 for key, value in os.environ.items():
     if key in required_env_vars:
         print(f"{key}: {'*****' if 'KEY' in key or 'SECRET' in key else value}")
 
-# Determine if in development mode
-DEV_MODE = os.getenv("FLASK_ENV", "production") == "development"
 
 
 # Initialize Flask app
