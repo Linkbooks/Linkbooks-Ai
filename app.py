@@ -997,18 +997,21 @@ def debug_env():
     variables = {
         "SUPABASE_URL": os.getenv('SUPABASE_URL'),
         "SUPABASE_KEY": os.getenv('SUPABASE_KEY'),
-        "QB_CLIENT_ID": os.getenv('QB_CLIENT_ID'),
-        "QB_CLIENT_SECRET": os.getenv('QB_CLIENT_SECRET'),
+        "QB_SANDBOX_CLIENT_ID": os.getenv('QB_SANDBOX_CLIENT_ID'),
+        "QB_SANDBOX_CLIENT_SECRET": os.getenv('QB_SANDBOX_CLIENT_SECRET'),
+        "QB_PROD_CLIENT_ID": os.getenv('QB_PROD_CLIENT_ID'),
+        "QB_PROD_CLIENT_SECRET": os.getenv('QB_PROD_CLIENT_SECRET'),
         "FLASK_SECRET_KEY": os.getenv('FLASK_SECRET_KEY'),
         "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
     }
     # Don't expose secrets directly, but useful for debugging.
     logging.info(f"Environment variables: {variables}")
     # Return masked results
-    return {key: ("*****" if key != "OPENAI_API_KEY" else value[:5] + "*****") for key, value in variables.items()}, 200
+    return {key: ("*****" if "KEY" in key or "SECRET" in key else value) for key, value in variables.items()}, 200
 
 # Debugging information
 print(f"OpenAI API Key Loaded: {bool(openai_client.api_key)}")
+
 
 @app.before_request
 def log_request_info():

@@ -151,8 +151,10 @@ FLASK_ENV=development
 FLASK_SECRET_KEY=your_secret_key
 SUPABASE_URL=your_supabase_url
 SUPABASE_KEY=your_supabase_key
-QB_CLIENT_ID=your_quickbooks_client_id
-QB_CLIENT_SECRET=your_quickbooks_client_secret
+QB_SANDBOX_CLIENT_ID: os.getenv('QB_SANDBOX_CLIENT_ID'),
+QB_SANDBOX_CLIENT_SECRET: os.getenv('QB_SANDBOX_CLIENT_SECRET'),
+QB_PROD_CLIENT_ID: os.getenv('QB_PROD_CLIENT_ID'),
+QB_PROD_CLIENT_SECRET: os.getenv('QB_PROD_CLIENT_SECRET'),
 REDIRECT_URI=http://localhost:5000/callback
 OPENAI_API_KEY=your_openai_api_key
 ```
