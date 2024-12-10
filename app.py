@@ -6,7 +6,8 @@ import time
 from flask import render_template, redirect, request, make_response, url_for, send_from_directory, jsonify, Flask
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
-from supabase import create_client
+from supabase import create_client, Client
+from supabase.lib.client_options import ClientOptions
 from gotrue.errors import AuthApiError  # Correct import for error handling
 from bcrypt import checkpw
 from openai import OpenAI
@@ -44,7 +45,7 @@ for key, value in os.environ.items():
     if key in required_env_vars:
         print(f"{key}: {'*****' if 'KEY' in key or 'SECRET' in key else value}")
 
-
+# Determine if in development mode
 DEV_MODE = os.getenv("FLASK_ENV", "production") == "development"
 
 
@@ -65,23 +66,33 @@ limiter.init_app(app)  # Attach the limiter to the Flask app
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 try:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY, timeout=30)
+    client_options = ClientOptions(postgrest_client_timeout=30)  # Timeout in seconds
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY, options=client_options)
     logging.info("Supabase client initialized successfully.")
 except Exception as e:
     logging.error(f"Error initializing Supabase client: {e}")
     supabase = None
 
-# Check if Supabase client was initialized successfully
-if supabase is None:
-    logging.error("Supabase client is not initialized. Check SUPABASE_URL and SUPABASE_KEY.")
 
 # QuickBooks OAuth Configuration
-CLIENT_ID = os.getenv('QB_CLIENT_ID')
-CLIENT_SECRET = os.getenv('QB_CLIENT_SECRET')
-REDIRECT_URI = os.getenv('REDIRECT_URI', "http://localhost:5000/callback")
+if DEV_MODE:
+    CLIENT_ID = os.getenv('QB_SANDBOX_CLIENT_ID')
+    CLIENT_SECRET = os.getenv('QB_SANDBOX_CLIENT_SECRET')
+    REDIRECT_URI = os.getenv('SANDBOX_REDIRECT_URI')
+    logging.info("Using Sandbox QuickBooks credentials.")
+else:
+    CLIENT_ID = os.getenv('QB_PROD_CLIENT_ID')
+    CLIENT_SECRET = os.getenv('QB_PROD_CLIENT_SECRET')
+    REDIRECT_URI = os.getenv('PROD_REDIRECT_URI')
+    logging.info("Using Production QuickBooks credentials.")
+
 AUTHORIZATION_BASE_URL = "https://appcenter.intuit.com/connect/oauth2"
 TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 SCOPE = "com.intuit.quickbooks.accounting"
+
+
+logging.info(f"Using REDIRECT_URI: {REDIRECT_URI}")
+
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -269,10 +280,11 @@ def get_tokens_by_email(email):
     if not supabase:
         logging.error("Supabase client is not initialized.")
         raise Exception("Supabase client is not available.")
-    
+
     response = supabase.table("users").select("*").eq("email", email).execute()
     if not response.data:
-        raise Exception("No tokens found for the given email")
+        logging.warning(f"No tokens found for the given email: {email}")
+        return None, None, None, None  # Return None values instead of raising an exception
 
     token_data = response.data[0]
     return (
@@ -281,6 +293,7 @@ def get_tokens_by_email(email):
         token_data["realm_id"],
         token_data.get("token_expiry")
     )
+
 
 def token_required(f):
     @wraps(f)
@@ -785,6 +798,11 @@ def dashboard():
         # Check if QuickBooks tokens are available
         access_token, refresh_token, realm_id, expiry = get_tokens_by_email(user_email)
 
+        if not access_token or not refresh_token or not realm_id:
+            # No tokens found – prompt the user to log in with QuickBooks
+            logging.info("No QuickBooks tokens found. Prompting user to log in with QuickBooks.")
+            return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
+
         # Refresh token if expired
         if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
             logging.info("QuickBooks token expired. Refreshing...")
@@ -792,13 +810,14 @@ def dashboard():
 
         # Fetch QuickBooks company info as an example
         company_info = get_company_info()
-        
+
         # Render the dashboard with optional success message
-        return render_template('dashboard.html', data=company_info, success_message=success_message)
+        return render_template('dashboard.html', data=company_info, success_message=success_message, quickbooks_login_needed=False)
 
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
+
 
 
 

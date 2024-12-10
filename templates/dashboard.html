@@ -115,11 +115,19 @@
         <h2>Dashboard</h2>
         <div class="container">
 
+            {% if quickbooks_login_needed %}
+                <div class="quickbooks-login-prompt">
+                    <p>You need to log in with QuickBooks to access your data.</p>
+                    <a href="{{ url_for('quickbooks_login') }}" class="button">Log in with QuickBooks</a>
+            </div>
+            {% endif %}
+
+
             <!-- Display Success Message -->
             {% if success_message %}
-            <div class="message success-message">
-            <p>QuickBooks authorization successful!</p>
-            </div>
+                <div class="message success-message">
+                    <p>QuickBooks authorization successful!</p>
+                </div>
             {% endif %}
 
             <!-- Connection Status Section -->
