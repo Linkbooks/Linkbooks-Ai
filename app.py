@@ -188,22 +188,28 @@ def get_tokens_from_db():
     token = response.data[0]
     return token["access_token"], token["refresh_token"], token["realm_id"], token.get("token_expiry")
 
-def refresh_access_token():
-    user_id = get_authenticated_user_email()  # Retrieve the user ID or email from the session/JWT
+def refresh_access_token(user_id):
+    """
+    Refreshes the QuickBooks access token for the given user_id.
+    """
     quickbooks_data = get_quickbooks_tokens(user_id)  # Retrieve tokens for this user
+
+    if not quickbooks_data:
+        logging.error(f"No QuickBooks tokens found for user_id: {user_id}")
+        raise Exception("No QuickBooks tokens found for the user.")
 
     refresh_token = quickbooks_data['refresh_token']
     auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
     payload = {'grant_type': 'refresh_token', 'refresh_token': refresh_token}
     headers = {'Accept': 'application/json'}
-    
-    logging.info("Attempting to refresh access token...")
+
+    logging.info(f"Attempting to refresh access token for user_id: {user_id}...")
     response = requests.post(TOKEN_URL, auth=auth_header, data=payload, headers=headers)
-    
+
     if response.status_code == 200:
         tokens = response.json()
         new_access_token = tokens['access_token']
-        new_refresh_token = tokens['refresh_token']
+        new_refresh_token = tokens.get('refresh_token', refresh_token)  # Some APIs might not return a new refresh token
         new_expiry = (datetime.utcnow() + timedelta(seconds=tokens['expires_in'])).isoformat()
 
         # Save updated tokens to the database
@@ -214,10 +220,11 @@ def refresh_access_token():
             refresh_token=new_refresh_token,
             token_expiry=new_expiry
         )
-        logging.info("Access token refreshed and saved successfully.")
+        logging.info(f"Access token refreshed and saved successfully for user_id: {user_id}.")
     else:
-        logging.error(f"Failed to refresh access token: {response.text}")
+        logging.error(f"Failed to refresh access token for user_id {user_id}: {response.text}")
         raise Exception(response.text)
+
 
 
 def save_quickbooks_tokens(user_id, realm_id, access_token, refresh_token, token_expiry):
@@ -225,12 +232,15 @@ def save_quickbooks_tokens(user_id, realm_id, access_token, refresh_token, token
     Save QuickBooks tokens to the quickbooks_tokens table.
     """
     try:
+        # Convert datetime to ISO string format
+        token_expiry_str = token_expiry.isoformat() if isinstance(token_expiry, datetime) else token_expiry
+
         data = {
             "id": user_id,
             "realm_id": realm_id,
             "access_token": access_token,
             "refresh_token": refresh_token,
-            "token_expiry": token_expiry,
+            "token_expiry": token_expiry_str,  # Store as ISO string
             "last_updated": datetime.utcnow().isoformat()
         }
         supabase.table("quickbooks_tokens").upsert(data).execute()
@@ -267,7 +277,7 @@ def generate_session_token(user_id, email):
     )
     return token
 
-
+ 
 def get_authenticated_user_email():
     token = request.headers.get("Authorization")
     if not token:
@@ -282,6 +292,31 @@ def get_authenticated_user_email():
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
         raise Exception("An unexpected error occurred")
+
+def get_tokens_by_user_id(user_id):
+    """
+    Fetch QuickBooks tokens from the Supabase table based on the user ID.
+    """
+    try:
+        response = supabase.table("quickbooks_tokens").select("*").eq("id", user_id).execute()
+        data = response.data
+
+        if not data:
+            logging.warning(f"No QuickBooks tokens found for user ID: {user_id}")
+            return None, None, None, None
+
+        token_data = data[0]
+        access_token = token_data.get("access_token")
+        refresh_token = token_data.get("refresh_token")
+        realm_id = token_data.get("realm_id")
+        token_expiry = token_data.get("token_expiry")
+
+        return access_token, refresh_token, realm_id, token_expiry
+
+    except Exception as e:
+        logging.error(f"Error fetching QuickBooks tokens: {e}")
+        return None, None, None, None
+
 
 
 def get_tokens_by_email(email):
@@ -309,14 +344,16 @@ def token_required(f):
         """
         Decorator to require and validate JWT tokens for protected routes.
         """
-        token = request.headers.get("Authorization")
+        token = request.cookies.get("session_token")  # Get token from cookies
         if not token:
             return {"error": "No Authorization token provided"}, 401
         
         try:
-            # Decode the token
+            # Decode the token and extract user_id
             decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            request.user_email = decoded.get("email")  # Attach the user's email to the request
+            request.user_id = decoded.get("user_id")  # Attach the user's user_id to the request
+            if not request.user_id:
+                raise Exception("No user_id found in the token.")
         except jwt.ExpiredSignatureError:
             return {"error": "Token has expired"}, 401
         except jwt.InvalidTokenError:
@@ -329,19 +366,22 @@ def token_required(f):
 
 
 
-def get_company_info():
-    # Fetch tokens
-    access_token, _, realm_id, expiry = get_tokens_by_email(request.user_email)
+def get_company_info(user_id):
+    # Fetch tokens using user_id
+    access_token, _, realm_id, expiry = get_tokens_by_user_id(user_id)
+
+    if not access_token:
+        # No QuickBooks tokens found, raise an exception
+        # The dashboard route will catch this and show disconnected state
+        raise Exception("No access token found. QuickBooks disconnected.")
 
     # Validate token expiry
     if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
         logging.info("Token expired. Refreshing...")
         refresh_access_token()
+        access_token, _, realm_id, _ = get_tokens_by_user_id(user_id)
 
-        # Fetch new tokens after refresh
-        access_token, _, realm_id, _ = get_tokens_by_email(request.user_email)
-
-    # Use access_token to fetch data
+    # Attempt to fetch company info
     headers = {
         'Authorization': f"Bearer {access_token}",
         'Accept': 'application/json'
@@ -350,18 +390,22 @@ def get_company_info():
     api_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/query?query={query}&minorversion=14"
     response = requests.get(api_url, headers=headers)
 
-    # Handle expired token error during request
     if response.status_code == 401:
+        # Token expired during request, try refreshing again
         logging.info("Access token expired during request. Refreshing...")
         refresh_access_token()
-        access_token, _, _, _ = get_tokens_by_email(request.user_email)
+        access_token, _, realm_id, _ = get_tokens_by_user_id(user_id)
         headers['Authorization'] = f"Bearer {access_token}"
         response = requests.get(api_url, headers=headers)
 
     if response.status_code == 200:
         return response.json().get("QueryResponse", {}).get("CompanyInfo", [])[0]
     else:
+        # Any error from QuickBooks will raise an exception
+        # The dashboard route will catch this and handle the disconnected state
         raise Exception(response.text)
+
+
 
     
 
@@ -751,8 +795,22 @@ def callback():
         refresh_token = tokens['refresh_token']
         expiry = datetime.utcnow() + timedelta(seconds=tokens['expires_in'])
 
+        # Convert datetime to string (ISO format)
+        expiry_str = expiry.isoformat()  # Convert to string format like "2024-12-10T22:16:36.056973"
+
+        # Retrieve the user_id from session via JWT (if user is logged in)
+        token = request.cookies.get('session_token')
+        if not token:
+            return {"error": "No Authorization token provided"}, 401
+
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        user_id = decoded.get("user_id")
+
+        if not user_id:
+            return {"error": "User ID missing from token"}, 401
+            
+
         # Store tokens in Supabase
-        user_id = get_authenticated_user_email()  # Extract user ID or email from JWT
         save_quickbooks_tokens(
             user_id=user_id,
             realm_id=realm_id,
@@ -775,57 +833,42 @@ def callback():
 @app.route('/dashboard')
 def dashboard():
     try:
-        # Check for the QuickBooks login success flag
+        # Check QuickBooks login success flag
         success_message = request.args.get('quickbooks_login_success')
 
-        if DEV_MODE:
-            # In dev mode, skip token check and set a mock user email
-            user_email = "dev_user@example.com"
-            logging.info("DEV_MODE is enabled. Using mock user email.")
-        else:
-            # Production mode: perform token check manually
-            token = request.headers.get("Authorization")
-            if not token:
-                logging.warning("Unauthorized access attempt: Missing token.")
-                return {"error": "Unauthorized, missing token"}, 401
-
-            try:
-                decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-                user_email = decoded.get("email")
-                if not user_email:
-                    logging.warning("Invalid token payload: No email found.")
-                    return {"error": "Invalid token payload, no email"}, 401
-            except jwt.ExpiredSignatureError:
-                logging.warning("Token has expired.")
-                return {"error": "Token has expired"}, 401
-            except jwt.InvalidTokenError:
-                logging.warning("Invalid token provided.")
-                return {"error": "Invalid token"}, 401
-
-        # Now that we have user_email (from either dev mode or token), proceed as before
-        # Check if QuickBooks tokens are available
-        access_token, refresh_token, realm_id, expiry = get_tokens_by_email(user_email)
-
-        if not access_token or not refresh_token or not realm_id:
-            # No tokens found – prompt the user to log in with QuickBooks
-            logging.info("No QuickBooks tokens found. Prompting user to log in with QuickBooks.")
+        # Attempt to decode the session_token from cookies to get user_id
+        token = request.cookies.get('session_token')
+        if not token:
+            # No user logged in, show dashboard without QuickBooks data
+            logging.info("No session_token found. Showing dashboard with QuickBooks disconnected.")
             return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
 
-        # Refresh token if expired
-        if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
-            logging.info("QuickBooks token expired. Refreshing...")
-            refresh_access_token()
+        try:
+            decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            user_id = decoded.get("user_id")
+            if not user_id:
+                logging.warning("No user_id found in token. Showing disconnected state.")
+                return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            # Token invalid or expired, show disconnected state
+            logging.warning("Session token invalid or expired. Showing disconnected.")
+            return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
 
-        # Fetch QuickBooks company info as an example
-        company_info = get_company_info()
-
-        # Render the dashboard with optional success message
-        return render_template('dashboard.html', data=company_info, success_message=success_message, quickbooks_login_needed=False)
+        # If we have a user_id, try fetching QuickBooks info
+        # If tokens are missing or invalid, an exception will be raised
+        try:
+            company_info = get_company_info(user_id)
+            # If successful, show QuickBooks data
+            return render_template('dashboard.html', data=company_info, success_message=success_message, quickbooks_login_needed=False)
+        except Exception as e:
+            # Catch the exception from QuickBooks (like 403 error)
+            # Show dashboard with QuickBooks disconnected message
+            logging.warning(f"Error fetching QuickBooks data: {e}")
+            return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
 
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
-
 
 
 
@@ -849,7 +892,40 @@ def privacy_policy():
 @app.route('/business-info', methods=['GET'])
 def business_info():
     try:
-        company_info = get_company_info()
+        token = request.cookies.get('session_token')
+        if not token:
+            return {"error": "No session token"}, 401
+
+        # Decode the session token
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        user_id = decoded.get("user_id")
+        if not user_id:
+            return {"error": "No user_id in token"}, 401
+
+        # Fetch QuickBooks tokens using user_id
+        tokens = get_quickbooks_tokens(user_id)
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token')
+        realm_id = tokens.get('realm_id')
+        expiry = tokens.get('token_expiry')
+
+        if not access_token or not realm_id:
+            return {"error": "QuickBooks not connected"}, 400
+
+        # Refresh if expired
+        if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
+            refresh_access_token(user_id)
+            tokens = get_quickbooks_tokens(user_id)
+            access_token = tokens.get('access_token')
+            refresh_token = tokens.get('refresh_token')
+            realm_id = tokens.get('realm_id')
+            expiry = tokens.get('token_expiry')
+            if not access_token:
+                return {"error": "Could not refresh tokens"}, 400
+
+        # Now fetch company info
+        company_info = get_company_info(user_id)
+        # If successful, return the company info
         return {
             "companyName": company_info.get("CompanyName"),
             "legalName": company_info.get("LegalName"),
@@ -860,6 +936,9 @@ def business_info():
     except Exception as e:
         logging.error(f"Error in /business-info: {e}")
         return {"error": str(e)}, 500
+
+
+
 
 @app.route('/analyze', methods=['GET'])
 def analyze():
@@ -918,31 +997,54 @@ def list_reports():
 
 
 
-@app.route('/fetch-reports', methods=['GET'])
-def fetch_reports():
-    try:
-        report_type = request.args.get('reportType')
-        start_date = request.args.get('startDate')
-        end_date = request.args.get('endDate')
+def fetch_report(user_id, report_type, start_date=None, end_date=None):
+    """
+    Fetches a financial report from QuickBooks.
 
-        if not report_type:
-            return {"error": "reportType parameter is required"}, 400
+    :param user_id: The user's unique identifier.
+    :param report_type: Type of report (e.g., ProfitAndLoss, BalanceSheet).
+    :param start_date: Start date for the report (YYYY-MM-DD).
+    :param end_date: End date for the report (YYYY-MM-DD).
+    :return: Report data as JSON.
+    """
+    # Fetch tokens
+    access_token, _, realm_id, expiry = get_quickbooks_tokens(user_id)
 
-        # Validate reportType against the list of supported reports
-        if report_type not in get_reports():
-            return {"error": f"Invalid reportType: {report_type}. Use /list-reports to see available reports."}, 400
+    # Validate token expiry
+    if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
+        logging.info("Token expired. Refreshing...")
+        refresh_access_token(user_id)
+        access_token, _, realm_id, _ = get_quickbooks_tokens(user_id)
 
-        # Use the defined fetch_report() function
-        report_data = fetch_report(
-            report_type=report_type,
-            start_date=start_date,
-            end_date=end_date
-        )
+    # Construct API request
+    headers = {
+        'Authorization': f"Bearer {access_token}",
+        'Accept': 'application/json'
+    }
+    base_url = f'https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}'
+    params = {}
+    if start_date:
+        params['start_date'] = start_date
+    if end_date:
+        params['end_date'] = end_date
 
-        return {"reportType": report_type, "data": report_data}, 200
-    except Exception as e:
-        logging.error(f"Error fetching report: {e}")
-        return {"error": str(e)}, 500
+    response = requests.get(base_url, headers=headers, params=params)
+
+    # Handle token expiration during request
+    if response.status_code == 401:
+        logging.info("Access token expired during request. Refreshing...")
+        refresh_access_token(user_id)
+        access_token, _, realm_id, _ = get_quickbooks_tokens(user_id)
+        headers['Authorization'] = f"Bearer {access_token}"
+        response = requests.get(base_url, headers=headers, params=params)
+
+    # Check response status
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logging.error(f"Error fetching report: {response.text}")
+        raise Exception(f"Failed to fetch report: {response.status_code} {response.text}")
+
 
 
 
