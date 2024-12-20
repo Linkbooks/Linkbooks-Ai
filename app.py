@@ -87,16 +87,21 @@ if DEV_MODE:
     CLIENT_ID = os.getenv('QB_SANDBOX_CLIENT_ID')
     CLIENT_SECRET = os.getenv('QB_SANDBOX_CLIENT_SECRET')
     REDIRECT_URI = os.getenv('SANDBOX_REDIRECT_URI')
+    QUICKBOOKS_API_BASE_URL = "https://sandbox-quickbooks.api.intuit.com/v3/company/"
+    LOGGING_LEVEL = 'DEBUG'
     logging.info("Using Sandbox QuickBooks credentials.")
 else:
     CLIENT_ID = os.getenv('QB_PROD_CLIENT_ID')
     CLIENT_SECRET = os.getenv('QB_PROD_CLIENT_SECRET')
     REDIRECT_URI = os.getenv('PROD_REDIRECT_URI')
+    QUICKBOOKS_API_BASE_URL = "https://quickbooks.api.intuit.com/v3/company/"
+    LOGGING_LEVEL = 'INFO'
     logging.info("Using Production QuickBooks credentials.")
 
 AUTHORIZATION_BASE_URL = "https://appcenter.intuit.com/connect/oauth2"
 TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 SCOPE = "com.intuit.quickbooks.accounting"
+
 
 
 logging.info(f"Using REDIRECT_URI: {REDIRECT_URI}")
@@ -367,99 +372,132 @@ def token_required(f):
 
 
 def get_company_info(user_id):
-    # Fetch tokens using user_id
-    access_token, _, realm_id, expiry = get_tokens_by_user_id(user_id)
+    try:
+        # Fetch tokens using user_id
+        tokens = get_quickbooks_tokens(user_id)
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token')
+        realm_id = tokens.get('realm_id')
+        expiry = tokens.get('token_expiry')
 
-    if not access_token:
-        # No QuickBooks tokens found, raise an exception
-        # The dashboard route will catch this and show disconnected state
-        raise Exception("No access token found. QuickBooks disconnected.")
+        if not access_token:
+            logging.error("Access token missing.")
+            raise Exception("No access token found. QuickBooks disconnected.")
 
-    # Validate token expiry
-    if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
-        logging.info("Token expired. Refreshing...")
-        refresh_access_token()
-        access_token, _, realm_id, _ = get_tokens_by_user_id(user_id)
+        # Validate token expiry
+        if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
+            logging.info("Access token expired. Refreshing...")
+            refresh_access_token(user_id)
+            tokens = get_quickbooks_tokens(user_id)
+            access_token = tokens.get('access_token')
+            refresh_token = tokens.get('refresh_token')
+            realm_id = tokens.get('realm_id')
+            expiry = tokens.get('token_expiry')
 
-    # Attempt to fetch company info
-    headers = {
-        'Authorization': f"Bearer {access_token}",
-        'Accept': 'application/json'
-    }
-    query = "SELECT * FROM CompanyInfo"
-    api_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/query?query={query}&minorversion=14"
-    response = requests.get(api_url, headers=headers)
+        # Use the correct API base URL based on environment
+        api_base_url = QUICKBOOKS_API_BASE_URL
 
-    if response.status_code == 401:
-        # Token expired during request, try refreshing again
-        logging.info("Access token expired during request. Refreshing...")
-        refresh_access_token()
-        access_token, _, realm_id, _ = get_tokens_by_user_id(user_id)
-        headers['Authorization'] = f"Bearer {access_token}"
+        # Attempt to fetch company info using the correct endpoint
+        headers = {
+            'Authorization': f"Bearer {access_token}",
+            'Accept': 'application/json'
+        }
+        api_url = f"{api_base_url}{realm_id}/companyinfo/{realm_id}"
         response = requests.get(api_url, headers=headers)
 
-    if response.status_code == 200:
-        return response.json().get("QueryResponse", {}).get("CompanyInfo", [])[0]
-    else:
-        # Any error from QuickBooks will raise an exception
-        # The dashboard route will catch this and handle the disconnected state
-        raise Exception(response.text)
+        logging.debug(f"QuickBooks API Request URL: {api_url}")
+        logging.debug(f"QuickBooks API Response Status: {response.status_code}")
 
+        if response.status_code == 401:
+            # Token expired during request, try refreshing again
+            logging.info("Access token expired during request. Refreshing...")
+            refresh_access_token(user_id)
+            tokens = get_quickbooks_tokens(user_id)
+            access_token = tokens.get('access_token')
+            realm_id = tokens.get('realm_id')
+            headers['Authorization'] = f"Bearer {access_token}"
+            response = requests.get(api_url, headers=headers)
+
+            logging.debug(f"QuickBooks API Retry Response Status: {response.status_code}")
+
+        if response.status_code == 200:
+            return response.json().get("CompanyInfo", {})
+        else:
+            logging.error(f"QuickBooks API Error: {response.status_code} - {response.text}")
+            raise Exception(f"Failed to fetch company info: {response.status_code} {response.text}")
+    except Exception as e:
+        logging.error(f"Error in get_company_info: {e}")
+        raise
 
 
     
 
     
-def fetch_report(report_type, start_date=None, end_date=None):
-    """
-    Fetches a financial report from QuickBooks.
+def fetch_report(user_id, report_type, start_date=None, end_date=None):
+    try:
+        # Fetch tokens
+        tokens = get_quickbooks_tokens(user_id)
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token')
+        realm_id = tokens.get('realm_id')
+        expiry = tokens.get('token_expiry')
 
-    :param report_type: Type of report (e.g., ProfitAndLoss, BalanceSheet).
-    :param start_date: Start date for the report (YYYY-MM-DD).
-    :param end_date: End date for the report (YYYY-MM-DD).
-    :return: Report data as JSON.
-    """
-    # Fetch tokens
-    access_token, _, realm_id, expiry = get_tokens_by_email(request.user_email)
+        if not access_token or not realm_id:
+            logging.error("Missing access token or realm_id.")
+            raise Exception("QuickBooks tokens are incomplete.")
 
-    # Validate token expiry
-    if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
-        logging.info("Token expired. Refreshing...")
-        refresh_access_token()
+        # Validate token expiry
+        if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
+            logging.info("Access token expired. Refreshing...")
+            refresh_access_token(user_id)
+            tokens = get_quickbooks_tokens(user_id)
+            access_token = tokens.get('access_token')
+            refresh_token = tokens.get('refresh_token')
+            realm_id = tokens.get('realm_id')
+            expiry = tokens.get('token_expiry')
 
-        # Fetch updated tokens
-        access_token, _, realm_id, _ = get_tokens_by_email(request.user_email)
+        # Use the correct API base URL based on environment
+        api_base_url = QUICKBOOKS_API_BASE_URL
 
-    # Construct API request
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Accept': 'application/json'
-    }
-    base_url = f'https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}'
-    params = {}
-    if start_date:
-        params['start_date'] = start_date
-    if end_date:
-        params['end_date'] = end_date
+        # Construct API request
+        headers = {
+            'Authorization': f"Bearer {access_token}",
+            'Accept': 'application/json'
+        }
+        base_url = f'{api_base_url}{realm_id}/reports/{report_type}'
+        params = {}
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
 
-    response = requests.get(base_url, headers=headers, params=params)
-
-    # Handle token expiration during request
-    if response.status_code == 401:
-        logging.info("Access token expired during request. Refreshing...")
-        refresh_access_token()
-
-        # Retry request with refreshed token
-        access_token, _, _, _ = get_tokens_by_email(request.user_email)
-        headers['Authorization'] = f'Bearer {access_token}'
         response = requests.get(base_url, headers=headers, params=params)
 
-    # Check response status
-    if response.status_code == 200:
-        return response.json()
-    else:
-        logging.error(f"Error fetching report: {response.text}")
-        raise Exception(f"Failed to fetch report: {response.status_code} {response.text}")
+        logging.debug(f"QuickBooks Report Request URL: {base_url}")
+        logging.debug(f"QuickBooks Report Response Status: {response.status_code}")
+
+        # Handle token expiration during request
+        if response.status_code == 401:
+            logging.info("Access token expired during report request. Refreshing...")
+            refresh_access_token(user_id)
+            tokens = get_quickbooks_tokens(user_id)
+            access_token = tokens.get('access_token')
+            realm_id = tokens.get('realm_id')
+            headers['Authorization'] = f"Bearer {access_token}"
+            response = requests.get(base_url, headers=headers, params=params)
+
+            logging.debug(f"QuickBooks Report Retry Response Status: {response.status_code}")
+
+        # Check response status
+        if response.status_code == 200:
+            logging.info(f"Successfully fetched {report_type} report.")
+            return response.json()
+        else:
+            logging.error(f"QuickBooks Report API Error: {response.status_code} - {response.text}")
+            raise Exception(f"Failed to fetch report: {response.status_code} {response.text}")
+    except Exception as e:
+        logging.error(f"Error in fetch_report: {e}")
+        raise
 
 
 
@@ -994,59 +1032,6 @@ def list_reports():
     except Exception as e:
         logging.error(f"Error listing reports: {e}")
         return {"error": str(e)}, 500
-
-
-
-def fetch_report(user_id, report_type, start_date=None, end_date=None):
-    """
-    Fetches a financial report from QuickBooks.
-
-    :param user_id: The user's unique identifier.
-    :param report_type: Type of report (e.g., ProfitAndLoss, BalanceSheet).
-    :param start_date: Start date for the report (YYYY-MM-DD).
-    :param end_date: End date for the report (YYYY-MM-DD).
-    :return: Report data as JSON.
-    """
-    # Fetch tokens
-    access_token, _, realm_id, expiry = get_quickbooks_tokens(user_id)
-
-    # Validate token expiry
-    if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
-        logging.info("Token expired. Refreshing...")
-        refresh_access_token(user_id)
-        access_token, _, realm_id, _ = get_quickbooks_tokens(user_id)
-
-    # Construct API request
-    headers = {
-        'Authorization': f"Bearer {access_token}",
-        'Accept': 'application/json'
-    }
-    base_url = f'https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}'
-    params = {}
-    if start_date:
-        params['start_date'] = start_date
-    if end_date:
-        params['end_date'] = end_date
-
-    response = requests.get(base_url, headers=headers, params=params)
-
-    # Handle token expiration during request
-    if response.status_code == 401:
-        logging.info("Access token expired during request. Refreshing...")
-        refresh_access_token(user_id)
-        access_token, _, realm_id, _ = get_quickbooks_tokens(user_id)
-        headers['Authorization'] = f"Bearer {access_token}"
-        response = requests.get(base_url, headers=headers, params=params)
-
-    # Check response status
-    if response.status_code == 200:
-        return response.json()
-    else:
-        logging.error(f"Error fetching report: {response.text}")
-        raise Exception(f"Failed to fetch report: {response.status_code} {response.text}")
-
-
-
 
 
 @app.route('/analyze-reports', methods=['POST'])
