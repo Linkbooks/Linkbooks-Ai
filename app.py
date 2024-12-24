@@ -89,6 +89,8 @@ if DEV_MODE:
     CLIENT_SECRET = os.getenv('QB_SANDBOX_CLIENT_SECRET')
     REDIRECT_URI = os.getenv('SANDBOX_REDIRECT_URI')
     QUICKBOOKS_API_BASE_URL = "https://sandbox-quickbooks.api.intuit.com/v3/company/"
+    REVOKE_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/revoke"
+
     LOGGING_LEVEL = 'DEBUG'
     logging.info("Using Sandbox QuickBooks credentials.")
 else:
@@ -96,6 +98,7 @@ else:
     CLIENT_SECRET = os.getenv('QB_PROD_CLIENT_SECRET')
     REDIRECT_URI = os.getenv('PROD_REDIRECT_URI')
     QUICKBOOKS_API_BASE_URL = "https://quickbooks.api.intuit.com/v3/company/"
+    REVOKE_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/revoke"
     LOGGING_LEVEL = 'INFO'
     logging.info("Using Production QuickBooks credentials.")
 
@@ -367,6 +370,9 @@ def refresh_quickbooks_tokens(chat_session_id, refresh_token):
 
 
 def revoke_quickbooks_tokens(refresh_token):
+     """
+    Revokes the given refresh token with QuickBooks.
+    """
     try:
         auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
         payload = {'token': refresh_token}
