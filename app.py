@@ -814,24 +814,29 @@ def logout():
 @app.route('/oauth/start-for-chatgpt', methods=['GET'])
 def start_oauth_for_chatgpt():
     """
-    Generates a QuickBooks OAuth login link for ChatGPT users, ensuring the user is authenticated.
+    Generates a QuickBooks OAuth login link for ChatGPT users, ensuring the session is tracked via chatgpt_oauth_states.
     """
     try:
         chat_session_id = request.args.get('chatSessionId')
         if not chat_session_id:
-            return jsonify({"error": "chatSessionId is required"}), 400
+            return jsonify({"error": "chatSessionId is required to generate a login link."}), 400
 
-        # Verify the user is logged in
-        response = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
-        if not response.data:
-            return jsonify({"error": "User is not logged into the middleware app"}), 401
-
-        # Generate a unique state value for CSRF protection
+        # Generate a unique state value
         state = f"{chat_session_id}-{secrets.token_hex(8)}"
-        store_state(chat_session_id, state)
 
-        # Construct the QuickBooks OAuth login URL
-        quickbooks_oauth_url = (
+        # Store the state in chatgpt_oauth_states
+        expiry = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+        response = supabase.table("chatgpt_oauth_states").upsert({
+            "chat_session_id": chat_session_id,
+            "state": state,
+            "expiry": expiry
+        }).execute()
+
+        if not response.data:
+            raise Exception("Failed to store state in chatgpt_oauth_states")
+
+        # Construct the OAuth login URL
+        login_url = (
             f"{AUTHORIZATION_BASE_URL}?"
             f"client_id={CLIENT_ID}&"
             f"response_type=code&"
@@ -839,11 +844,13 @@ def start_oauth_for_chatgpt():
             f"redirect_uri={REDIRECT_URI}&"
             f"state={state}"
         )
-        return jsonify({"loginUrl": quickbooks_oauth_url}), 200
+
+        return jsonify({"loginUrl": login_url}), 200
 
     except Exception as e:
         logging.error(f"Error in start_oauth_for_chatgpt: {e}")
-        return jsonify({"error": "Failed to generate login URL. Try again later."}), 500
+        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/link-chat-session', methods=['POST'])
@@ -1030,34 +1037,34 @@ def callback():
     Handles QuickBooks OAuth callback and stores tokens in Supabase.
     """
     try:
-        # QuickBooks sends the authorization code and realmId
+        # Retrieve query parameters
         code = request.args.get('code')
         realm_id = request.args.get('realmId')
         state = request.args.get('state')
 
         if not code or not realm_id:
-            return {"error": "Missing authorization code or realmId"}, 400
+            return jsonify({"error": "Missing authorization code or realmId"}), 400
 
         if not state:
-            return {"error": "Missing state parameter"}, 400
+            return jsonify({"error": "Missing state parameter"}), 400
 
-        # Parse state to check if it's from ChatGPT or a regular login
+        # Parse state to determine ChatGPT or regular session
         if '-' in state:
             chat_session_id, state_token = state.split('-', 1)
         else:
             chat_session_id, state_token = None, state
 
-        # Validate state (for CSRF protection) using Supabase
-        response = supabase.table("chatgpt_oauth_states").select("*").eq("chat_session_id", chat_session_id).execute()
-        if not response.data or response.data[0]['state'] != state:
-            return {"error": "Invalid state parameter"}, 400
+        # Validate state (CSRF protection) using Supabase
+        state_query = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
+        if not state_query.data or state_query.data[0]['state'] != state:
+            return jsonify({"error": "Invalid state parameter"}), 400
 
-        # Check expiry
-        expiry = datetime.fromisoformat(response.data[0]['expiry'])
+        stored_state = state_query.data[0]
+        expiry = datetime.fromisoformat(stored_state["expiry"])
         if datetime.utcnow() > expiry:
-            return {"error": "State token expired"}, 400
+            return jsonify({"error": "State token expired"}), 400
 
-        # Exchange code for tokens
+        # Exchange authorization code for tokens
         auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
         payload = {
             'grant_type': 'authorization_code',
@@ -1065,55 +1072,58 @@ def callback():
             'redirect_uri': REDIRECT_URI
         }
         headers = {'Accept': 'application/json'}
-        response = requests.post(TOKEN_URL, auth=auth_header, data=payload, headers=headers)
+        token_response = requests.post(TOKEN_URL, auth=auth_header, data=payload, headers=headers)
 
-        if response.status_code != 200:
-            return {"error": f"Failed to retrieve tokens: {response.text}"}, 400
+        if token_response.status_code != 200:
+            return jsonify({"error": f"Failed to retrieve tokens: {token_response.text}"}), 400
 
         # Parse tokens
-        tokens = response.json()
+        tokens = token_response.json()
         access_token = tokens['access_token']
         refresh_token = tokens['refresh_token']
         expiry = datetime.utcnow() + timedelta(seconds=tokens['expires_in'])
-        expiry_str = expiry.isoformat()  # Convert datetime to ISO string
+        expiry_str = expiry.isoformat()
 
         # Handle ChatGPT-based sessions
         if chat_session_id:
-            # Store QuickBooks tokens associated with the ChatGPT session
-            store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry_str)
-            logging.info(f"QuickBooks authorization successful for ChatGPT session {chat_session_id}")
+            # Store tokens for ChatGPT session
+            supabase.table("chatgpt_tokens").upsert({
+                "chat_session_id": chat_session_id,
+                "realm_id": realm_id,
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expiry": expiry_str
+            }).execute()
 
-            # Respond to ChatGPT with success (ChatGPT will handle the redirection)
+            logging.info(f"QuickBooks authorization successful for ChatGPT session {chat_session_id}")
             return jsonify({"success": True, "message": "QuickBooks tokens stored for ChatGPT session"}), 200
 
         # Handle app-based sessions
-        # Retrieve the user_id from session via JWT (if user is logged in)
+        # Retrieve the user ID from the JWT in cookies
         token = request.cookies.get('session_token')
         if not token:
-            return {"error": "No Authorization token provided"}, 401
+            return jsonify({"error": "No Authorization token provided"}), 401
 
         decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         user_id = decoded.get("user_id")
 
         if not user_id:
-            return {"error": "User ID missing from token"}, 401
+            return jsonify({"error": "User ID missing from token"}), 401
 
-        # Store tokens in Supabase for the user
-        save_quickbooks_tokens(
-            user_id=user_id,
-            realm_id=realm_id,
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_expiry=expiry
-        )
+        # Store tokens for the app-based user
+        supabase.table("user_profiles").update({
+            "realm_id": realm_id,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "expiry": expiry_str
+        }).eq("id", user_id).execute()
+
         logging.info(f"QuickBooks authorization successful for user {user_id}")
-
-        # Redirect to dashboard with success query parameter
         return redirect(url_for('dashboard') + "?quickbooks_login_success=true")
 
     except Exception as e:
         logging.error(f"Error in /callback: {e}")
-        return {"error": str(e)}, 500
+        return jsonify({"error": str(e)}), 500
 
 
 
