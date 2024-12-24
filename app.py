@@ -833,42 +833,44 @@ def store_state(chat_session_id, state):
 @app.route('/oauth/start-for-chatgpt', methods=['GET'])
 def start_oauth_for_chatgpt():
     """
-    Generates a QuickBooks OAuth login link for ChatGPT users, ensuring the user is authenticated.
+    Handles the login flow for ChatGPT users by ensuring they are authenticated with the middleware app first.
     """
     try:
-        # Get the ChatGPT session ID from query parameters
+        # Get the ChatGPT session ID
         chat_session_id = request.args.get('chatSessionId')
         if not chat_session_id:
-            return jsonify({"error": "chatSessionId is required to generate a login link."}), 400
+            return jsonify({"error": "chatSessionId is required"}), 400
 
-        # Check if the session is linked in Supabase
-        response = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
-        if not response.data:
+        # Check if the session is linked to a middleware user
+        user_check = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
 
-            # Generate login link for unlinked session (Generate a unique state value for CSRF protection)
-            state = f"{chat_session_id}-{secrets.token_hex(8)}"
+        if not user_check.data:
+            # Redirect to the middleware app login URL
+            middleware_login_url = f"https://quickbooks-gpt-app.onrender.com/login?chatSessionId={chat_session_id}"
+            return jsonify({"loginUrl": middleware_login_url}), 200
 
-            # Store the state in Supabase
-            store_state(chat_session_id, state)
+        # Generate a unique state value for CSRF protection
+        state = f"{chat_session_id}-{secrets.token_hex(8)}"
 
-            # Construct the QuickBooks OAuth login URL
-            quickbooks_oauth_url = (
-                f"{AUTHORIZATION_BASE_URL}?"
-                f"client_id={CLIENT_ID}&"
-                f"response_type=code&"
-                f"scope={SCOPE}&"
-                f"redirect_uri={REDIRECT_URI}&"
-                f"state={state}"
-            )
-            return jsonify({"loginUrl": quickbooks_oauth_url}), 200
+        # Store the state in Supabase
+        store_state(chat_session_id, state)
 
-        # If session is already linked
-        return jsonify({"error": "ChatGPT session is already linked to a user."}), 400
+        # Construct the QuickBooks OAuth login URL
+        quickbooks_oauth_url = (
+            f"{AUTHORIZATION_BASE_URL}?"
+            f"client_id={CLIENT_ID}&"
+            f"response_type=code&"
+            f"scope={SCOPE}&"
+            f"redirect_uri={REDIRECT_URI}&"
+            f"state={state}"
+        )
+
+        # Return the QuickBooks login URL
+        return jsonify({"loginUrl": quickbooks_oauth_url}), 200
 
     except Exception as e:
         logging.error(f"Error in start_oauth_for_chatgpt: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 
 
