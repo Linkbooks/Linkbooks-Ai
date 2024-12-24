@@ -370,7 +370,7 @@ def refresh_quickbooks_tokens(chat_session_id, refresh_token):
 
 
 def revoke_quickbooks_tokens(refresh_token):
-     """
+    """
     Revokes the given refresh token with QuickBooks.
     """
     try:
