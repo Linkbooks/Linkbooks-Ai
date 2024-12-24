@@ -89,7 +89,7 @@ if DEV_MODE:
     CLIENT_SECRET = os.getenv('QB_SANDBOX_CLIENT_SECRET')
     REDIRECT_URI = os.getenv('SANDBOX_REDIRECT_URI')
     QUICKBOOKS_API_BASE_URL = "https://sandbox-quickbooks.api.intuit.com/v3/company/"
-    REVOKE_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/revoke"
+    REVOKE_TOKEN_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke"
 
     LOGGING_LEVEL = 'DEBUG'
     logging.info("Using Sandbox QuickBooks credentials.")
@@ -98,7 +98,7 @@ else:
     CLIENT_SECRET = os.getenv('QB_PROD_CLIENT_SECRET')
     REDIRECT_URI = os.getenv('PROD_REDIRECT_URI')
     QUICKBOOKS_API_BASE_URL = "https://quickbooks.api.intuit.com/v3/company/"
-    REVOKE_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/revoke"
+    REVOKE_TOKEN_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke"
     LOGGING_LEVEL = 'INFO'
     logging.info("Using Production QuickBooks credentials.")
 
@@ -376,7 +376,10 @@ def revoke_quickbooks_tokens(refresh_token):
     try:
         auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
         payload = {'token': refresh_token}
-        headers = {'Accept': 'application/json'}
+        headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
 
         response = requests.post(REVOKE_TOKEN_URL, auth=auth_header, data=payload, headers=headers)
 
@@ -388,6 +391,7 @@ def revoke_quickbooks_tokens(refresh_token):
     except Exception as e:
         logging.error(f"Error revoking tokens: {e}")
         raise
+
 
 
 
