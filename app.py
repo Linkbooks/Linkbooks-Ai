@@ -814,42 +814,37 @@ def logout():
 @app.route('/oauth/start-for-chatgpt', methods=['GET'])
 def start_oauth_for_chatgpt():
     """
-    Generates a QuickBooks OAuth login link for ChatGPT users, ensuring the session is tracked via chatgpt_oauth_states.
+    Generates a QuickBooks OAuth login link for ChatGPT users, ensuring the user is authenticated.
     """
     try:
+        # Get the ChatGPT session ID from query parameters
         chat_session_id = request.args.get('chatSessionId')
         if not chat_session_id:
             return jsonify({"error": "chatSessionId is required to generate a login link."}), 400
 
-        # Generate a unique state value
-        state = f"{chat_session_id}-{secrets.token_hex(8)}"
-
-        # Store the state in chatgpt_oauth_states
-        expiry = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
-        response = supabase.table("chatgpt_oauth_states").upsert({
-            "chat_session_id": chat_session_id,
-            "state": state,
-            "expiry": expiry
-        }).execute()
-
+        # Check if the session is linked in Supabase
+        response = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
         if not response.data:
-            raise Exception("Failed to store state in chatgpt_oauth_states")
+            # Generate login link for unlinked session
+            state = f"{chat_session_id}-{secrets.token_hex(8)}"
+            store_state(chat_session_id, state)
+            quickbooks_oauth_url = (
+                f"{AUTHORIZATION_BASE_URL}?"
+                f"client_id={CLIENT_ID}&"
+                f"response_type=code&"
+                f"scope={SCOPE}&"
+                f"redirect_uri={REDIRECT_URI}&"
+                f"state={state}"
+            )
+            return jsonify({"loginUrl": quickbooks_oauth_url}), 200
 
-        # Construct the OAuth login URL
-        login_url = (
-            f"{AUTHORIZATION_BASE_URL}?"
-            f"client_id={CLIENT_ID}&"
-            f"response_type=code&"
-            f"scope={SCOPE}&"
-            f"redirect_uri={REDIRECT_URI}&"
-            f"state={state}"
-        )
-
-        return jsonify({"loginUrl": login_url}), 200
+        # If session is already linked
+        return jsonify({"error": "ChatGPT session is already linked to a user."}), 400
 
     except Exception as e:
         logging.error(f"Error in start_oauth_for_chatgpt: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
