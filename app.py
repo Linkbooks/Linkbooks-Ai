@@ -1162,27 +1162,20 @@ def callback():
         realm_id = request.args.get('realmId')
         state = request.args.get('state')
 
-        if not code or not realm_id:
-            return jsonify({"error": "Missing authorization code or realmId"}), 400
+        if not code or not realm_id or not state:
+            return jsonify({"error": "Missing required parameters (code, realmId, or state)."}), 400
 
-        if not state:
-            return jsonify({"error": "Missing state parameter"}), 400
-
-        # Parse state to determine ChatGPT or regular session
-        if '-' in state:
-            chat_session_id, state_token = state.split('-', 1)
-        else:
-            chat_session_id, state_token = None, state
-
-        # Validate state (CSRF protection) using Supabase
-        state_query = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
-        if not state_query.data or state_query.data[0]['state'] != state:
-            return jsonify({"error": "Invalid state parameter"}), 400
-
-        stored_state = state_query.data[0]
+        # Validate state (CSRF protection)
+        response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
+        if not response.data:
+            raise ValueError("Invalid or expired state parameter.")
+        
+        stored_state = response.data[0]
+        chat_session_id = stored_state.get("chat_session_id")
         expiry = datetime.fromisoformat(stored_state["expiry"])
+
         if datetime.utcnow() > expiry:
-            return jsonify({"error": "State token expired"}), 400
+            raise ValueError("State token expired.")
 
         # Exchange authorization code for tokens
         auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
@@ -1195,56 +1188,46 @@ def callback():
         token_response = requests.post(TOKEN_URL, auth=auth_header, data=payload, headers=headers)
 
         if token_response.status_code != 200:
-            return jsonify({"error": f"Failed to retrieve tokens: {token_response.text}"}), 400
+            raise ValueError(f"Failed to retrieve tokens: {token_response.text}")
 
-        # Parse tokens
         tokens = token_response.json()
         access_token = tokens['access_token']
         refresh_token = tokens['refresh_token']
         expiry = datetime.utcnow() + timedelta(seconds=tokens['expires_in'])
         expiry_str = expiry.isoformat()
 
-        # Handle ChatGPT-based sessions
+        # Handle ChatGPT sessions
         if chat_session_id:
-            # Store tokens for ChatGPT session
-            supabase.table("chatgpt_tokens").upsert({
-                "chat_session_id": chat_session_id,
-                "realm_id": realm_id,
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "expiry": expiry_str
-            }).execute()
-
+            store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry_str)
             logging.info(f"QuickBooks authorization successful for ChatGPT session {chat_session_id}")
-            return jsonify({"success": True, "message": "QuickBooks tokens stored for ChatGPT session"}), 200
+            return jsonify({"success": True, "message": "QuickBooks tokens stored for ChatGPT session."}), 200
 
-        # Handle app-based sessions
-        # Retrieve the user ID from the JWT in cookies
-        token = request.cookies.get('session_token')
-        if not token:
-            return jsonify({"error": "No Authorization token provided"}), 401
+        # Handle App-based sessions
+        session_token = request.cookies.get('session_token')
+        if not session_token:
+            raise ValueError("No Authorization token provided.")
 
-        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
         user_id = decoded.get("user_id")
 
         if not user_id:
-            return jsonify({"error": "User ID missing from token"}), 401
+            raise ValueError("User ID missing from session token.")
 
-        # Store tokens for the app-based user
-        supabase.table("user_profiles").update({
+        # Store tokens for app-based user
+        supabase.table("quickbooks_tokens").upsert({
+            "id": user_id,
             "realm_id": realm_id,
             "access_token": access_token,
             "refresh_token": refresh_token,
-            "expiry": expiry_str
-        }).eq("id", user_id).execute()
+            "token_expiry": expiry_str
+        }).execute()
 
         logging.info(f"QuickBooks authorization successful for user {user_id}")
         return redirect(url_for('dashboard') + "?quickbooks_login_success=true")
 
     except Exception as e:
-        logging.error(f"Error in /callback: {e}")
+        logging.error(f"Error in /callback: {e}, state: {state}, code: {code}, realmId: {realm_id}")
         return jsonify({"error": str(e)}), 500
-
 
 
 # Helper function to store tokens for ChatGPT sessions
