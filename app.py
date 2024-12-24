@@ -2,6 +2,7 @@ import os
 import logging
 import requests
 import secrets
+import random, string
 import bcrypt
 import time
 from flask import render_template, redirect, request, make_response, url_for, send_from_directory, jsonify, Flask
@@ -325,16 +326,18 @@ def get_tokens_by_user_id(user_id):
     except Exception as e:
         logging.error(f"Error fetching QuickBooks tokens: {e}")
         return None, None, None, None
+    
+def generate_random_state(length=32):
+    """Generates a random state string for OAuth."""
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-def clean_expired_states():
-    """
-    Delete expired OAuth states from the chatgpt_oauth_states table.
-    """
+def cleanup_expired_states():
+    """Removes expired states from the database."""
     try:
-        supabase.table("chatgpt_oauth_states").delete().lte("expiry", datetime.utcnow().isoformat()).execute()
-        logging.info("Expired OAuth states cleaned up.")
+        supabase.table("chatgpt_oauth_states").delete().lt("expiry", datetime.utcnow().isoformat()).execute()
+        logging.info("Expired states cleaned up successfully.")
     except Exception as e:
-        logging.error(f"Error cleaning expired OAuth states: {e}")
+        logging.error(f"Error cleaning up expired states: {e}")
 
 def refresh_quickbooks_tokens(chat_session_id, refresh_token):
     try:
@@ -948,11 +951,20 @@ def start_oauth_for_chatgpt():
             middleware_login_url = f"https://quickbooks-gpt-app.onrender.com/login?chatSessionId={chat_session_id}"
             return jsonify({"loginUrl": middleware_login_url}), 200
 
-        # Generate a unique state value for CSRF protection
-        state = f"{chat_session_id}-{secrets.token_hex(8)}"
-
-        # Store the state in Supabase
-        store_state(chat_session_id, state)
+        # Check if a valid state already exists for this session
+        state_query = supabase.table("chatgpt_oauth_states").select("*").eq("chat_session_id", chat_session_id).execute()
+        if state_query.data:
+            stored_state = state_query.data[0]
+            expiry = datetime.fromisoformat(stored_state["expiry"])
+            if datetime.utcnow() < expiry:
+                # Reuse the existing valid state
+                state = stored_state["state"]
+            else:
+                # State expired, generate a new one
+                state = generate_new_state(chat_session_id)
+        else:
+            # No state exists, generate a new one
+            state = generate_new_state(chat_session_id)
 
         # Construct the QuickBooks OAuth login URL
         quickbooks_oauth_url = (
@@ -971,6 +983,27 @@ def start_oauth_for_chatgpt():
         logging.error(f"Error in start_oauth_for_chatgpt: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+# Helper function to generate and store a new state
+def generate_new_state(chat_session_id):
+    """
+    Generates a new state for OAuth and stores it in Supabase.
+    """
+    try:
+        state = f"{chat_session_id}-{secrets.token_hex(8)}"
+        expiry = (datetime.utcnow() + timedelta(minutes=15)).isoformat()
+
+        # Store the new state in Supabase
+        supabase.table("chatgpt_oauth_states").upsert({
+            "chat_session_id": chat_session_id,
+            "state": state,
+            "expiry": expiry
+        }).execute()
+
+        return state
+    except Exception as e:
+        logging.error(f"Error generating new state: {e}")
+        raise
 
 
 @app.route('/link-chat-session', methods=['POST'])
@@ -1169,7 +1202,7 @@ def callback():
         response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
         if not response.data:
             raise ValueError("Invalid or expired state parameter.")
-        
+
         stored_state = response.data[0]
         chat_session_id = stored_state.get("chat_session_id")
         expiry = datetime.fromisoformat(stored_state["expiry"])
@@ -1236,8 +1269,7 @@ def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, re
     Stores QuickBooks tokens associated with a ChatGPT session ID in Supabase.
     """
     try:
-        # Upsert tokens into the Supabase database
-        response = supabase.table("chatgpt_tokens").upsert({
+        supabase.table("chatgpt_tokens").upsert({
             "chat_session_id": chat_session_id,
             "realm_id": realm_id,
             "access_token": access_token,
@@ -1245,13 +1277,9 @@ def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, re
             "expiry": expiry
         }).execute()
 
-        if not response.data:
-            raise Exception("Failed to store tokens in Supabase")
-
     except Exception as e:
         logging.error(f"Failed to store tokens for ChatGPT session {chat_session_id}: {e}")
         raise
-
 
 
 
