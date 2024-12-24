@@ -333,6 +333,57 @@ def clean_expired_states():
     except Exception as e:
         logging.error(f"Error cleaning expired OAuth states: {e}")
 
+def refresh_quickbooks_tokens(chat_session_id, refresh_token):
+    try:
+        auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
+        payload = {
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token
+        }
+        headers = {'Accept': 'application/json'}
+
+        response = requests.post(TOKEN_URL, auth=auth_header, data=payload, headers=headers)
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to refresh tokens: {response.text}")
+
+        tokens = response.json()
+        new_access_token = tokens['access_token']
+        new_refresh_token = tokens.get('refresh_token', refresh_token)  # Use old refresh_token if new one isn't provided
+        new_expiry = datetime.utcnow() + timedelta(seconds=tokens['expires_in'])
+
+        # Update tokens in database
+        supabase.table("chatgpt_tokens").update({
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "expiry": new_expiry.isoformat()
+        }).eq("chat_session_id", chat_session_id).execute()
+
+        return new_access_token
+
+    except Exception as e:
+        logging.error(f"Error refreshing tokens for {chat_session_id}: {e}")
+        raise
+
+
+def revoke_quickbooks_tokens(refresh_token):
+    try:
+        auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
+        payload = {'token': refresh_token}
+        headers = {'Accept': 'application/json'}
+
+        response = requests.post(REVOKE_TOKEN_URL, auth=auth_header, data=payload, headers=headers)
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to revoke tokens: {response.text}")
+
+        logging.info("QuickBooks tokens revoked successfully.")
+
+    except Exception as e:
+        logging.error(f"Error revoking tokens: {e}")
+        raise
+
+
 
 def get_tokens_by_email(email):
     if not supabase:
@@ -807,7 +858,40 @@ def quickbooks_login():
 
 @app.route('/logout')
 def logout():
-    return redirect(url_for('index'))
+    try:
+        session_token = request.cookies.get('session_token')
+        if not session_token:
+            logging.warning("No session token found during logout.")
+            return render_template('logout.html', message="You have been successfully logged out.")
+
+        decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        user_id = decoded.get("user_id")
+
+        if not user_id:
+            logging.warning("No user ID found in session token during logout.")
+            return render_template('logout.html', message="You have been successfully logged out.")
+
+        # Fetch the QuickBooks tokens from the database
+        response = supabase.table("quickbooks_tokens").select("refresh_token").eq("id", user_id).execute()
+        if response.data and response.data[0].get("refresh_token"):
+            revoke_quickbooks_tokens(response.data[0]["refresh_token"])
+
+        # Clear the session data in Supabase
+        supabase.table("quickbooks_tokens").delete().eq("id", user_id).execute()
+        supabase.table("chatgpt_tokens").delete().eq("user_id", user_id).execute()
+
+        # Clear the session cookie
+        response = make_response(render_template('logout.html', message="You have been successfully logged out."))
+        response.delete_cookie('session_token')
+
+        logging.info(f"User {user_id} logged out successfully.")
+        return response
+
+    except Exception as e:
+        logging.error(f"Error during logout: {e}")
+        return render_template('logout.html', message="An error occurred during logout. Please try again.")
+
+
     
     #------------CHAT GPT LOGIN------------------------------------#
 
