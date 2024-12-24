@@ -868,38 +868,43 @@ def quickbooks_login():
 
 @app.route('/logout')
 def logout():
+    """
+    Logs the user out by revoking QuickBooks tokens and deleting relevant tokens from Supabase.
+    """
     try:
+        # Retrieve the session token from cookies
         session_token = request.cookies.get('session_token')
         if not session_token:
-            logging.warning("No session token found during logout.")
-            return render_template('logout.html', message="You have been successfully logged out.")
+            raise Exception("No session token found in cookies.")
 
+        # Decode the session token to get user_id
         decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
         user_id = decoded.get("user_id")
-
         if not user_id:
-            logging.warning("No user ID found in session token during logout.")
-            return render_template('logout.html', message="You have been successfully logged out.")
+            raise Exception("No user ID found in session token.")
 
-        # Fetch the QuickBooks tokens from the database
-        response = supabase.table("quickbooks_tokens").select("refresh_token").eq("id", user_id).execute()
-        if response.data and response.data[0].get("refresh_token"):
-            revoke_quickbooks_tokens(response.data[0]["refresh_token"])
+        # Retrieve QuickBooks refresh token from Supabase
+        qb_response = supabase.table("quickbooks_tokens").select("refresh_token").eq("id", user_id).execute()
+        if qb_response.data:
+            refresh_token = qb_response.data[0]["refresh_token"]
+            # Revoke QuickBooks tokens
+            revoke_quickbooks_tokens(refresh_token)
 
-        # Clear the session data in Supabase
+        # Delete QuickBooks tokens from Supabase
         supabase.table("quickbooks_tokens").delete().eq("id", user_id).execute()
-        supabase.table("chatgpt_tokens").delete().eq("user_id", user_id).execute()
 
-        # Clear the session cookie
-        response = make_response(render_template('logout.html', message="You have been successfully logged out."))
-        response.delete_cookie('session_token')
+        # Retrieve and delete ChatGPT tokens using chat_session_id
+        chat_response = supabase.table("chatgpt_tokens").select("chat_session_id").eq("realm_id", user_id).execute()
+        if chat_response.data:
+            chat_session_id = chat_response.data[0]["chat_session_id"]
+            supabase.table("chatgpt_tokens").delete().eq("chat_session_id", chat_session_id).execute()
 
-        logging.info(f"User {user_id} logged out successfully.")
-        return response
+        logging.info("User logged out successfully.")
+        return render_template("logout_success.html", message="You have been logged out successfully.")
 
     except Exception as e:
         logging.error(f"Error during logout: {e}")
-        return render_template('logout.html', message="An error occurred during logout. Please try again.")
+        return render_template("logout_success.html", message="An error occurred during logout. Please try again.")
 
 
     
