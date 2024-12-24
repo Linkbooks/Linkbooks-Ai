@@ -42,13 +42,12 @@ scheduler.start()
 
 app = Flask(__name__)
 
-@app.before_first_request
-def start_scheduler():
-    """
-    Starts the APScheduler when the Flask app begins processing requests.
-    """
+@app.before_request
+def initialize_scheduler():
     if not scheduler.running:
+        scheduler.add_job(cleanup_expired_states, 'interval', hours=1)
         scheduler.start()
+
 
 
 # Loading Env File for Running app locally On/Off
