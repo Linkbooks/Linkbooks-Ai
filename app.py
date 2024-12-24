@@ -17,6 +17,38 @@ import jwt
 from functools import wraps
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.events import EVENT_JOB_ERROR
+
+# Scheduler initialization
+scheduler = BackgroundScheduler()
+
+def cleanup_expired_states():
+    try:
+        now = datetime.utcnow().isoformat()
+        supabase.table("chatgpt_oauth_states").delete().lt("expiry", now).execute()
+        logging.info("Expired state tokens cleaned up.")
+    except Exception as e:
+        logging.error(f"Error cleaning up expired states: {e}")
+
+scheduler.add_job(cleanup_expired_states, 'interval', hours=1)
+
+def log_scheduler_error(event):
+    if event.exception:
+        logging.error(f"Scheduler job failed: {event.job_id}, Exception: {event.exception}")
+
+scheduler.add_listener(log_scheduler_error, EVENT_JOB_ERROR)
+scheduler.start()
+
+app = Flask(__name__)
+
+@app.before_first_request
+def start_scheduler():
+    """
+    Starts the APScheduler when the Flask app begins processing requests.
+    """
+    if not scheduler.running:
+        scheduler.start()
 
 
 # Loading Env File for Running app locally On/Off
@@ -111,6 +143,7 @@ SCOPE = "com.intuit.quickbooks.accounting"
 
 logging.info(f"Using REDIRECT_URI: {REDIRECT_URI}")
 
+assert REDIRECT_URI == "https://quickbooks-gpt-app.onrender.com/callback", "Mismatch in REDIRECT_URI configuration."
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -235,6 +268,34 @@ def refresh_access_token(user_id):
         logging.error(f"Failed to refresh access token for user_id {user_id}: {response.text}")
         raise Exception(response.text)
 
+def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry):
+    """
+    Stores QuickBooks tokens associated with a ChatGPT session ID in Supabase.
+    """
+    try:
+        supabase.table("chatgpt_tokens").upsert({
+            "chat_session_id": chat_session_id,
+            "realm_id": realm_id,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "expiry": expiry
+        }).execute()
+        logging.info(f"Tokens stored for ChatGPT session {chat_session_id}")
+    except Exception as e:
+        logging.error(f"Failed to store tokens for ChatGPT session {chat_session_id}: {e}")
+        raise
+
+def log_supabase_operation(operation_desc, supabase_call):
+    """
+    Logs and executes a Supabase operation with error handling.
+    """
+    try:
+        response = supabase_call()
+        logging.info(f"Success: {operation_desc}")
+        return response
+    except Exception as e:
+        logging.error(f"Failed: {operation_desc} with error {e}")
+        raise
 
 
 def save_quickbooks_tokens(user_id, realm_id, access_token, refresh_token, token_expiry):
@@ -331,13 +392,6 @@ def generate_random_state(length=32):
     """Generates a random state string for OAuth."""
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-def cleanup_expired_states():
-    """Removes expired states from the database."""
-    try:
-        supabase.table("chatgpt_oauth_states").delete().lt("expiry", datetime.utcnow().isoformat()).execute()
-        logging.info("Expired states cleaned up successfully.")
-    except Exception as e:
-        logging.error(f"Error cleaning up expired states: {e}")
 
 def refresh_quickbooks_tokens(chat_session_id, refresh_token):
     try:
@@ -395,7 +449,22 @@ def revoke_quickbooks_tokens(refresh_token):
         logging.error(f"Error revoking tokens: {e}")
         raise
 
+# Helper function to validate state
+def validate_state(state):
+    """
+    Validates the incoming state against the database.
+    """
+    response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
+    if not response.data:
+        logging.error(f"State not found in database: {state}")
+        raise ValueError("Invalid or expired state parameter.")
 
+    stored_state = response.data[0]
+    expiry = datetime.fromisoformat(stored_state["expiry"])
+    if datetime.utcnow() > expiry:
+        logging.error(f"State expired. Generated: {stored_state['expiry']} Current: {datetime.utcnow()}")
+        raise ValueError("State token expired.")
+    return stored_state
 
 
 def get_tokens_by_email(email):
@@ -1203,6 +1272,9 @@ def callback():
     Handles QuickBooks OAuth callback and stores tokens in Supabase.
     """
     try:
+        # Cleanup expired states
+        cleanup_expired_states()
+
         # Retrieve query parameters
         code = request.args.get('code')
         realm_id = request.args.get('realmId')
@@ -1212,8 +1284,18 @@ def callback():
             return jsonify({"error": "Missing required parameters (code, realmId, or state)."}), 400
 
         # Validate state (CSRF protection)
-        stored_state = validate_state(state)
+        response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
+        if not response.data:
+            logging.error(f"Invalid state parameter: {state}")
+            raise ValueError("Invalid or expired state parameter.")
+
+        stored_state = response.data[0]
         chat_session_id = stored_state.get("chat_session_id")
+        expiry = datetime.fromisoformat(stored_state["expiry"])
+
+        if datetime.utcnow() > expiry:
+            logging.error(f"State expired for session {chat_session_id}: {state}")
+            raise ValueError("State token expired.")
 
         # Exchange authorization code for tokens
         auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
@@ -1226,6 +1308,7 @@ def callback():
         token_response = requests.post(TOKEN_URL, auth=auth_header, data=payload, headers=headers)
 
         if token_response.status_code != 200:
+            logging.error(f"Token exchange failed: {token_response.text}")
             raise ValueError(f"Failed to retrieve tokens: {token_response.text}")
 
         tokens = token_response.json()
@@ -1264,47 +1347,8 @@ def callback():
         return redirect(url_for('dashboard') + "?quickbooks_login_success=true")
 
     except Exception as e:
-        logging.error(f"Error in /callback: {e}, state: {state if 'state' in locals() else None}, "
-                      f"code: {code if 'code' in locals() else None}, "
-                      f"realmId: {realm_id if 'realmId' in locals() else None}")
+        logging.error(f"Error in /callback: {e}, state: {state}, code: {code}, realmId: {realm_id}")
         return jsonify({"error": str(e)}), 500
-
-
-# Helper function to store tokens for ChatGPT sessions
-def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry):
-    """
-    Stores QuickBooks tokens associated with a ChatGPT session ID in Supabase.
-    """
-    try:
-        supabase.table("chatgpt_tokens").upsert({
-            "chat_session_id": chat_session_id,
-            "realm_id": realm_id,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "expiry": expiry
-        }).execute()
-        logging.info(f"Tokens successfully stored for ChatGPT session {chat_session_id}")
-    except Exception as e:
-        logging.error(f"Failed to store tokens for ChatGPT session {chat_session_id}: {e}")
-        raise
-
-
-# Helper function to validate state
-def validate_state(state):
-    """
-    Validates the incoming state against the database.
-    """
-    response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
-    if not response.data:
-        logging.error(f"State not found in database: {state}")
-        raise ValueError("Invalid or expired state parameter.")
-
-    stored_state = response.data[0]
-    expiry = datetime.fromisoformat(stored_state["expiry"])
-    if datetime.utcnow() > expiry:
-        logging.error(f"State expired. Generated: {stored_state['expiry']} Current: {datetime.utcnow()}")
-        raise ValueError("State token expired.")
-    return stored_state
 
 
 
