@@ -915,22 +915,35 @@ def logout():
 
 def store_state(chat_session_id, state):
     """
-    Store the state value associated with the chatSessionId in the Supabase database.
+    Stores the generated state and expiry in the database for OAuth flow.
     """
+    expiry = datetime.utcnow() + timedelta(minutes=30)  # Adjust expiry duration if needed
     try:
-        # Insert or update the state in Supabase
-        response = supabase.table("chatgpt_oauth_states").upsert({
-            "chat_session_id": chat_session_id,
+        supabase.table("chatgpt_oauth_states").upsert({
             "state": state,
-            "expiry": (datetime.utcnow() + timedelta(minutes=10)).isoformat()  # 10-minute expiry
+            "chat_session_id": chat_session_id,
+            "expiry": expiry.isoformat()
         }).execute()
-
-        if not response.data:
-            raise Exception("Failed to store state in Supabase")
+        logging.info(f"Stored state: {state} with expiry: {expiry}")
     except Exception as e:
-        logging.error(f"Error in store_state: {e}")
+        logging.error(f"Failed to store state: {state}, Error: {e}")
         raise
 
+def validate_state(state):
+    """
+    Validates the incoming state against the database.
+    """
+    response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
+    if not response.data:
+        logging.error(f"State not found in database: {state}")
+        raise ValueError("Invalid or expired state parameter.")
+
+    stored_state = response.data[0]
+    expiry = datetime.fromisoformat(stored_state["expiry"])
+    if datetime.utcnow() > expiry:
+        logging.error(f"State expired. Generated: {stored_state['expiry']} Current: {datetime.utcnow()}")
+        raise ValueError("State token expired.")
+    return stored_state
 
 @app.route('/oauth/start-for-chatgpt', methods=['GET'])
 def start_oauth_for_chatgpt():
@@ -1199,16 +1212,8 @@ def callback():
             return jsonify({"error": "Missing required parameters (code, realmId, or state)."}), 400
 
         # Validate state (CSRF protection)
-        response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
-        if not response.data:
-            raise ValueError("Invalid or expired state parameter.")
-
-        stored_state = response.data[0]
+        stored_state = validate_state(state)
         chat_session_id = stored_state.get("chat_session_id")
-        expiry = datetime.fromisoformat(stored_state["expiry"])
-
-        if datetime.utcnow() > expiry:
-            raise ValueError("State token expired.")
 
         # Exchange authorization code for tokens
         auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
@@ -1259,7 +1264,9 @@ def callback():
         return redirect(url_for('dashboard') + "?quickbooks_login_success=true")
 
     except Exception as e:
-        logging.error(f"Error in /callback: {e}, state: {state}, code: {code}, realmId: {realm_id}")
+        logging.error(f"Error in /callback: {e}, state: {state if 'state' in locals() else None}, "
+                      f"code: {code if 'code' in locals() else None}, "
+                      f"realmId: {realm_id if 'realmId' in locals() else None}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1276,10 +1283,28 @@ def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, re
             "refresh_token": refresh_token,
             "expiry": expiry
         }).execute()
-
+        logging.info(f"Tokens successfully stored for ChatGPT session {chat_session_id}")
     except Exception as e:
         logging.error(f"Failed to store tokens for ChatGPT session {chat_session_id}: {e}")
         raise
+
+
+# Helper function to validate state
+def validate_state(state):
+    """
+    Validates the incoming state against the database.
+    """
+    response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
+    if not response.data:
+        logging.error(f"State not found in database: {state}")
+        raise ValueError("Invalid or expired state parameter.")
+
+    stored_state = response.data[0]
+    expiry = datetime.fromisoformat(stored_state["expiry"])
+    if datetime.utcnow() > expiry:
+        logging.error(f"State expired. Generated: {stored_state['expiry']} Current: {datetime.utcnow()}")
+        raise ValueError("State token expired.")
+    return stored_state
 
 
 
