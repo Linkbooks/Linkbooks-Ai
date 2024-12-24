@@ -811,6 +811,25 @@ def logout():
     
     #------------CHAT GPT LOGIN------------------------------------#
 
+def store_state(chat_session_id, state):
+    """
+    Store the state value associated with the chatSessionId in the Supabase database.
+    """
+    try:
+        # Insert or update the state in Supabase
+        response = supabase.table("chatgpt_oauth_states").upsert({
+            "chat_session_id": chat_session_id,
+            "state": state,
+            "expiry": (datetime.utcnow() + timedelta(minutes=10)).isoformat()  # 10-minute expiry
+        }).execute()
+
+        if not response.data:
+            raise Exception("Failed to store state in Supabase")
+    except Exception as e:
+        logging.error(f"Error in store_state: {e}")
+        raise
+
+
 @app.route('/oauth/start-for-chatgpt', methods=['GET'])
 def start_oauth_for_chatgpt():
     """
@@ -825,9 +844,14 @@ def start_oauth_for_chatgpt():
         # Check if the session is linked in Supabase
         response = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
         if not response.data:
-            # Generate login link for unlinked session
+
+            # Generate login link for unlinked session (Generate a unique state value for CSRF protection)
             state = f"{chat_session_id}-{secrets.token_hex(8)}"
+
+            # Store the state in Supabase
             store_state(chat_session_id, state)
+
+            # Construct the QuickBooks OAuth login URL
             quickbooks_oauth_url = (
                 f"{AUTHORIZATION_BASE_URL}?"
                 f"client_id={CLIENT_ID}&"
