@@ -389,7 +389,7 @@ def get_tokens_by_user_id(user_id):
         logging.error(f"Error fetching QuickBooks tokens: {e}")
         return None, None, None, None
     
-def generate_random_state(length=32):
+def generate_random_state(length=16):
     """Generates a random state string for OAuth."""
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
@@ -955,27 +955,52 @@ def quickbooks_login():
     """
     Handles QuickBooks OAuth login with dynamic state generation and secure storage.
     """
-    # Generate a dynamic state
-    state = generate_random_state()  # Function to generate a unique random string
-    expiry = datetime.utcnow() + timedelta(minutes=30)  # 30-minute expiry
+    try:
+        # Retrieve the user ID from the session token
+        session_token = request.cookies.get('session_token')
+        if not session_token:
+            return jsonify({"error": "User not authenticated. Please log in first."}), 401
 
-    # Store the state in the database for validation later
-    user_id = get_current_user_id()  # Replace with your user identification logic
-    if not user_id:
-        return jsonify({"error": "User not authenticated."}), 401
+        # Decode the session token to extract the user ID
+        try:
+            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Session token expired. Please log in again."}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid session token. Please log in again."}), 401
 
-    supabase.table("chatgpt_oauth_states").insert({
-        "state": state,
-        "user_id": user_id,
-        "expiry": expiry.isoformat(),
-    }).execute()
+        user_id = decoded.get("user_id")
+        if not user_id:
+            return jsonify({"error": "User ID missing in session token. Please log in again."}), 401
 
-    # Construct the QuickBooks OAuth URL
-    auth_url = f"{AUTHORIZATION_BASE_URL}?client_id={CLIENT_ID}&response_type=code" \
-               f"&scope={SCOPE}&redirect_uri={REDIRECT_URI}&state={state}"
-    logging.info(f"Redirecting to QuickBooks login: {auth_url}")
+        # Generate a dynamic state
+        state = generate_random_state()
+        expiry = datetime.utcnow() + timedelta(minutes=30)  # 30-minute expiry
 
-    return redirect(auth_url)
+        # Store the state in the database for validation later
+        supabase.table("chatgpt_oauth_states").insert({
+            "state": state,
+            "user_id": user_id,
+            "expiry": expiry.isoformat(),
+        }).execute()
+
+        # Construct the QuickBooks OAuth URL
+        auth_url = (
+            f"{AUTHORIZATION_BASE_URL}?"
+            f"client_id={CLIENT_ID}&"
+            f"response_type=code&"
+            f"scope={SCOPE}&"
+            f"redirect_uri={REDIRECT_URI}&"
+            f"state={state}"
+        )
+        logging.info(f"Redirecting to QuickBooks login: {auth_url}")
+
+        return redirect(auth_url)
+
+    except Exception as e:
+        logging.error(f"Error in /quickbooks-login: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 
 
@@ -1327,8 +1352,8 @@ def callback():
 
         # Validate state (CSRF protection)
         response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
-        if not response.data:
-            logging.error(f"Invalid state parameter: {state}")
+        if not response.data or len(response.data) == 0:
+            logging.error(f"Invalid or expired state parameter: {state}")
             return jsonify({"error": "Invalid or expired state parameter."}), 400
 
         stored_state = response.data[0]
@@ -1361,9 +1386,13 @@ def callback():
 
         # Handle ChatGPT sessions
         if chat_session_id:
-            store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry_str)
-            logging.info(f"QuickBooks authorization successful for ChatGPT session {chat_session_id}")
-            return jsonify({"success": True, "message": "QuickBooks tokens stored for ChatGPT session."}), 200
+            try:
+                store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry_str)
+                logging.info(f"QuickBooks authorization successful for ChatGPT session {chat_session_id}")
+                return jsonify({"success": True, "message": "QuickBooks tokens stored for ChatGPT session."}), 200
+            except Exception as e:
+                logging.error(f"Failed to store tokens for ChatGPT session: {e}")
+                return jsonify({"error": "Failed to store tokens for ChatGPT session."}), 500
 
         # Handle App-based sessions
         session_token = request.cookies.get('session_token')
@@ -1375,10 +1404,10 @@ def callback():
             decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
             logging.error("Session token expired.")
-            return jsonify({"error": "Session token expired."}), 401
+            return jsonify({"error": "Session token expired. Please log in again."}), 401
         except jwt.InvalidTokenError:
             logging.error("Invalid session token.")
-            return jsonify({"error": "Invalid session token."}), 401
+            return jsonify({"error": "Invalid session token. Please log in again."}), 401
 
         user_id = decoded.get("user_id")
         if not user_id:
@@ -1386,19 +1415,22 @@ def callback():
             return jsonify({"error": "User ID missing from session token."}), 400
 
         # Store tokens for app-based user
-        supabase.table("quickbooks_tokens").upsert({
-            "id": user_id,
-            "realm_id": realm_id,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_expiry": expiry_str
-        }).execute()
-
-        logging.info(f"QuickBooks authorization successful for user {user_id}")
-        return redirect(url_for('dashboard') + "?quickbooks_login_success=true")
+        try:
+            supabase.table("quickbooks_tokens").upsert({
+                "id": user_id,
+                "realm_id": realm_id,
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_expiry": expiry_str
+            }).execute()
+            logging.info(f"QuickBooks authorization successful for user {user_id}")
+            return redirect(url_for('dashboard') + "?quickbooks_login_success=true")
+        except Exception as e:
+            logging.error(f"Failed to store tokens for user {user_id}: {e}")
+            return jsonify({"error": "Failed to store tokens for user."}), 500
 
     except Exception as e:
-        logging.error(f"Error in /callback: {e}, state: {state}, code: {code}, realmId: {realm_id}")
+        logging.error(f"Error in /callback: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1448,7 +1480,7 @@ def dashboard():
 @app.route('/fetch-reports', methods=['GET'])
 def fetch_reports_route():
     """
-    Route to fetch QuickBooks reports.
+    Fetches QuickBooks reports for a given ChatGPT session.
     """
     try:
         # Get query parameters
@@ -1458,37 +1490,39 @@ def fetch_reports_route():
         end_date = request.args.get('endDate')
 
         if not chat_session_id:
+            logging.error("Missing chatSessionId.")
             return jsonify({"error": "chatSessionId is required"}), 400
 
         if not report_type:
+            logging.error("Missing reportType.")
             return jsonify({"error": "reportType is required"}), 400
 
-        # Fetch tokens for the given ChatGPT session from Supabase
+        # Fetch tokens for the given ChatGPT session
         response = supabase.table("chatgpt_tokens").select("*").eq("chat_session_id", chat_session_id).execute()
-
-        if not response.data:
-            return jsonify({"error": "Invalid or expired chatSessionId"}), 401
+        if not response.data or len(response.data) == 0:
+            logging.error(f"Invalid or expired chatSessionId: {chat_session_id}")
+            return jsonify({"error": "Invalid or expired chatSessionId. Please log in again."}), 401
 
         tokens = response.data[0]
-        user_id = tokens['realm_id']  # Assuming `realm_id` corresponds to the user
         access_token = tokens['access_token']
-        refresh_token = tokens['refresh_token']
+        refresh_token = tokens.get('refresh_token')
+        realm_id = tokens['realm_id']
         expiry = tokens['expiry']
 
-        # Validate token expiry
+        # Refresh tokens if expired
         if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
-            logging.info(f"Access token for chatSessionId {chat_session_id} expired. Attempting refresh...")
+            logging.info(f"Access token expired for chatSessionId {chat_session_id}. Attempting refresh...")
             try:
                 refreshed_tokens = refresh_access_token_for_chatgpt(chat_session_id, refresh_token)
                 access_token = refreshed_tokens['access_token']
-                user_id = tokens['realm_id']
+                realm_id = refreshed_tokens.get('realm_id', realm_id)
             except Exception as e:
                 logging.error(f"Failed to refresh tokens for chatSessionId {chat_session_id}: {e}")
                 return jsonify({"error": "Failed to refresh tokens. Please log in again."}), 401
 
-        # Call the fetch_report utility
+        # Fetch report
         report_data = fetch_report(
-            user_id=user_id,
+            user_id=realm_id,  # Use realm_id as the user identifier
             report_type=report_type,
             start_date=start_date,
             end_date=end_date
@@ -1496,7 +1530,7 @@ def fetch_reports_route():
 
         return jsonify({
             "reportType": report_type,
-            "data": report_data
+            "data": report_data,
         }), 200
 
     except Exception as e:
@@ -1504,20 +1538,35 @@ def fetch_reports_route():
         return jsonify({"error": str(e)}), 500
 
 
+
 @app.route('/business-info', methods=['GET'])
 def business_info():
+    """
+    Retrieves the user's company information from QuickBooks.
+    """
     try:
-        token = request.cookies.get('session_token')
-        if not token:
-            return {"error": "No session token"}, 401
+        # Retrieve session token
+        session_token = request.cookies.get('session_token')
+        if not session_token:
+            logging.error("No session token provided.")
+            return {"error": "Session expired. Please log in again."}, 401
 
-        # Decode the session token
-        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        # Decode session token to get user ID
+        try:
+            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            logging.error("Session token expired.")
+            return {"error": "Session expired. Please log in again."}, 401
+        except jwt.InvalidTokenError:
+            logging.error("Invalid session token.")
+            return {"error": "Invalid session token. Please log in again."}, 401
+
         user_id = decoded.get("user_id")
         if not user_id:
-            return {"error": "No user_id in token"}, 401
+            logging.error("User ID missing from session token.")
+            return {"error": "Session expired. Please log in again."}, 401
 
-        # Fetch QuickBooks tokens using user_id
+        # Fetch QuickBooks tokens
         tokens = get_quickbooks_tokens(user_id)
         access_token = tokens.get('access_token')
         refresh_token = tokens.get('refresh_token')
@@ -1525,29 +1574,34 @@ def business_info():
         expiry = tokens.get('token_expiry')
 
         if not access_token or not realm_id:
-            return {"error": "QuickBooks not connected"}, 400
+            logging.error("QuickBooks not connected for user.")
+            return {"error": "QuickBooks not connected. Please log in again."}, 400
 
-        # Refresh if expired
+        # Refresh tokens if expired
         if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
-            refresh_access_token(user_id)
-            tokens = get_quickbooks_tokens(user_id)
-            access_token = tokens.get('access_token')
-            refresh_token = tokens.get('refresh_token')
-            realm_id = tokens.get('realm_id')
-            expiry = tokens.get('token_expiry')
-            if not access_token:
-                return {"error": "Could not refresh tokens"}, 400
+            logging.info("Access token expired. Attempting refresh...")
+            try:
+                refresh_access_token(user_id)
+                tokens = get_quickbooks_tokens(user_id)
+                access_token = tokens.get('access_token')
+                if not access_token:
+                    raise ValueError("Failed to refresh access token.")
+            except Exception as e:
+                logging.error(f"Failed to refresh tokens for user {user_id}: {e}")
+                return {"error": "Could not refresh tokens. Please log in again."}, 401
 
-        # Now fetch company info
+        # Fetch company info
         company_info = get_company_info(user_id)
-        # If successful, return the company info
+
+        # Return company information
         return {
             "companyName": company_info.get("CompanyName"),
             "legalName": company_info.get("LegalName"),
             "address": company_info.get("CompanyAddr", {}).get("Line1"),
             "phone": company_info.get("PrimaryPhone", {}).get("FreeFormNumber"),
-            "email": company_info.get("Email", {}).get("Address")
+            "email": company_info.get("Email", {}).get("Address"),
         }, 200
+
     except Exception as e:
         logging.error(f"Error in /business-info: {e}")
         return {"error": str(e)}, 500
