@@ -142,7 +142,12 @@ SCOPE = "com.intuit.quickbooks.accounting"
 
 logging.info(f"Using REDIRECT_URI: {REDIRECT_URI}")
 
-assert REDIRECT_URI == "https://quickbooks-gpt-app.onrender.com/callback", "Mismatch in REDIRECT_URI configuration."
+# Allow different REDIRECT_URI values based on the environment
+assert REDIRECT_URI in [
+    "http://localhost:5000/callback",  # Local development
+    "https://quickbooks-gpt-app.onrender.com/callback",  # Production
+], f"Mismatch in REDIRECT_URI configuration. Current: {REDIRECT_URI}"
+
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -1039,19 +1044,19 @@ def logout():
         # Delete QuickBooks tokens from Supabase
         supabase.table("quickbooks_tokens").delete().eq("id", user_id).execute()
 
-        # Retrieve and delete ChatGPT tokens (if applicable)
+        # Retrieve and delete ChatGPT tokens using chat_session_id
         chat_response = supabase.table("chatgpt_tokens").select("chat_session_id").eq("realm_id", user_id).execute()
         if chat_response.data:
-            chat_session_id = chat_response.data[0].get("chat_session_id")
-            if chat_session_id:  # Handle cases where chat_session_id might be NULL
-                supabase.table("chatgpt_tokens").delete().eq("chat_session_id", chat_session_id).execute()
+            chat_session_id = chat_response.data[0]["chat_session_id"]
+            supabase.table("chatgpt_tokens").delete().eq("chat_session_id", chat_session_id).execute()
 
         logging.info("User logged out successfully.")
-        return render_template("logout_success.html", message="You have been logged out successfully.")
+        return render_template("logout.html", message="You have been logged out successfully.")
 
     except Exception as e:
         logging.error(f"Error during logout: {e}")
-        return render_template("logout_success.html", message="An error occurred during logout. Please try again.")
+        return render_template("logout.html", message="An error occurred during logout. Please try again.")
+
 
 
     

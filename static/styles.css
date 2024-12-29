@@ -386,6 +386,22 @@ main {
     font-weight: bold;
 }
 
+/* -------------------------------------------------------------
+   LOGOUT PAGE CUSTOM STYLING
+------------------------------------------------------------- */
+.logout-page .container {
+    padding: 30px 20px; /* Adjust padding for the container */
+    margin: 40px auto;  /* Add more spacing around the container */
+}
+
+.logout-page h1 {
+    margin-bottom: 25px; /* Adjust spacing below the heading */
+}
+
+.logout-page p {
+    margin-bottom: 35px; /* Adjust spacing below the paragraph */
+}
+
 
 /* -------------------------------------------------------------
    NAVIGATION BUTTON STYLING

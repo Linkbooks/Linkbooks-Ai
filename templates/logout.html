@@ -4,36 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logout Successful</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 50px;
-            background-color: #f7f7f7;
-        }
-        h1 {
-            color: #333;
-        }
-        p {
-            color: #666;
-        }
-        a {
-            display: inline-block;
-            margin-top: 20px;
-            padding: 10px 20px;
-            background-color: #4caf50;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-        }
-        a:hover {
-            background-color: #45a049;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body>
-    <h1>{{ message }}</h1>
-    <p>If you wish to log back in, click below:</p>
-    <a href="{{ url_for('login') }}">Log In</a>
+<body class="logout-page">
+    <header>
+        <a href="/" class="header-link">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo" class="logo">
+            <h1>QuickBooks GPT App</h1>
+        </a>
+    </header>
+
+    <main>
+        <div class="container">
+            <h1>{{ message }}</h1>
+            <p>If you wish to log back in, click below:</p>
+            <div class="button-container">
+                <a href="{{ url_for('login') }}" class="button">Log In</a>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 WAW Studios Ltd. All rights reserved.</p>
+    </footer>
 </body>
 </html>
