@@ -790,7 +790,7 @@ def login():
                 url_for('dashboard') if not chat_session_id else url_for('link_chat_session', chatSessionId=chat_session_id)
             )
         )
-        secure_cookie = app.env == "production"  # Only secure in production
+        secure_cookie = app.config.get("ENV") == "production"  # Only secure in production
         resp.set_cookie(
             "session_token",
             token,
