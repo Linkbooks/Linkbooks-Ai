@@ -973,14 +973,23 @@ def quickbooks_login():
         if not user_id:
             return jsonify({"error": "User ID missing in session token. Please log in again."}), 401
 
+        # Check for ChatGPT session (chatSessionId query parameter)
+        chat_session_id = request.args.get("chatSessionId")
+
+        if chat_session_id:
+            logging.info(f"ChatGPT session detected: {chat_session_id}")
+        else:
+            logging.info(f"App-based session detected for user: {user_id}")
+
         # Generate a dynamic state
         state = generate_random_state()
         expiry = datetime.utcnow() + timedelta(minutes=30)  # 30-minute expiry
 
-        # Store the state in the database for validation later
+        # Store the state in the database
         supabase.table("chatgpt_oauth_states").insert({
             "state": state,
             "user_id": user_id,
+            "chat_session_id": chat_session_id,  # NULL for app-based sessions
             "expiry": expiry.isoformat(),
         }).execute()
 
@@ -1000,7 +1009,6 @@ def quickbooks_login():
     except Exception as e:
         logging.error(f"Error in /quickbooks-login: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 
 
@@ -1031,11 +1039,12 @@ def logout():
         # Delete QuickBooks tokens from Supabase
         supabase.table("quickbooks_tokens").delete().eq("id", user_id).execute()
 
-        # Retrieve and delete ChatGPT tokens using chat_session_id
+        # Retrieve and delete ChatGPT tokens (if applicable)
         chat_response = supabase.table("chatgpt_tokens").select("chat_session_id").eq("realm_id", user_id).execute()
         if chat_response.data:
-            chat_session_id = chat_response.data[0]["chat_session_id"]
-            supabase.table("chatgpt_tokens").delete().eq("chat_session_id", chat_session_id).execute()
+            chat_session_id = chat_response.data[0].get("chat_session_id")
+            if chat_session_id:  # Handle cases where chat_session_id might be NULL
+                supabase.table("chatgpt_tokens").delete().eq("chat_session_id", chat_session_id).execute()
 
         logging.info("User logged out successfully.")
         return render_template("logout_success.html", message="You have been logged out successfully.")
