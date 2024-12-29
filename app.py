@@ -240,6 +240,7 @@ def refresh_access_token(user_id):
         logging.error(f"No QuickBooks tokens found for user_id: {user_id}")
         raise Exception("No QuickBooks tokens found for the user.")
 
+
     refresh_token = quickbooks_data['refresh_token']
     auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
     payload = {'grant_type': 'refresh_token', 'refresh_token': refresh_token}
@@ -266,6 +267,7 @@ def refresh_access_token(user_id):
     else:
         logging.error(f"Failed to refresh access token for user_id {user_id}: {response.text}")
         raise Exception(response.text)
+    
 
 def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry):
     """
@@ -722,6 +724,8 @@ def get_reports():
 def index():
     return render_template('index.html')
 
+#Login Route
+
 @app.route('/login', methods=['GET', 'POST'])
 @limiter.limit("5 per minute", error_message="Too many login attempts. Please try again in a minute.")
 def login():
@@ -734,7 +738,7 @@ def login():
         password = data.get('password')
         chat_session_id = request.args.get('chatSessionId')  # Get ChatGPT session ID if provided
 
-        logging.info(f"Received chatSessionId: {chat_session_id}")  # Log chatSessionId
+        logging.info(f"Received chatSessionId: {chat_session_id}")
 
         # Validation for Missing Fields
         if not email or not password:
@@ -743,35 +747,56 @@ def login():
 
         # Check if the user exists
         response = supabase.table("users").select("id").eq("email", email).execute()
+        logging.info(f"Querying users table for email: {email}, Response: {response}")
+
         if not response.data or len(response.data) == 0:
             error_message = "No account found with that email."
+            logging.warning(f"Login failed: No account found for email {email}.")
             return render_template('login.html', error_message=error_message), 401
 
         user_id = response.data[0]["id"]
 
-        # Authenticate user
+        # User exists, now attempt to sign in via Supabase Auth
         try:
             auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            logging.info(f"Auth response: {auth_response}")
         except AuthApiError as e:
-            error_message = "Invalid login credentials." if "invalid" in str(e).lower() else "An error occurred during login."
+            error_msg = str(e).lower()
+            if 'invalid login credentials' in error_msg or 'invalid password' in error_msg:
+                error_message = "Invalid email or password."
+            elif 'too many requests' in error_msg or 'rate limit' in error_msg:
+                error_message = "Too many login attempts. Please try again later."
+            elif 'jwt expired' in error_msg:
+                error_message = "Session expired. Please log in again."
+            else:
+                error_message = "An error occurred during login. Please try again."
             return render_template('login.html', error_message=error_message), 401
 
         # Generate session token
         token = generate_session_token(user_id, email)
         logging.info(f"Generated session token for user ID: {user_id}")
 
+        # Link ChatGPT session ID to user (if provided)
+        if chat_session_id:
+            link_response = supabase.table("user_profiles").update({
+                "chat_session_id": chat_session_id
+            }).eq("id", user_id).execute()
+            if link_response.error:
+                logging.warning(f"Failed to link chatSessionId for user {user_id}. Response: {link_response}")
+
         # Set token in cookie
         resp = make_response(
             redirect(
-                url_for('link_chat_session', chatSessionId=chat_session_id) if chat_session_id else url_for('dashboard')
+                url_for('dashboard') if not chat_session_id else url_for('link_chat_session', chatSessionId=chat_session_id)
             )
         )
+        secure_cookie = app.env == "production"  # Only secure in production
         resp.set_cookie(
             "session_token",
             token,
             httponly=True,
-            secure=True,
-            samesite='Lax'
+            secure=secure_cookie,
+            samesite='Lax',
         )
         logging.info(f"Session token set for user ID: {user_id}")
         return resp
@@ -780,8 +805,6 @@ def login():
         logging.error(f"Error during login: {e}", exc_info=True)
         error_message = "An unexpected error occurred during login. Please try again."
         return render_template('login.html', error_message=error_message), 500
-
-
 
 
 # Create Account Route
