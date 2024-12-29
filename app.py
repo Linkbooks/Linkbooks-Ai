@@ -1365,6 +1365,7 @@ def callback():
             return jsonify({"error": "Missing required parameters (code, realmId, or state)."}), 400
 
         # Validate state (CSRF protection)
+        logging.info(f"Validating state: {state}")
         response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
         if not response.data or len(response.data) == 0:
             logging.error(f"Invalid or expired state parameter: {state}")
@@ -1401,11 +1402,12 @@ def callback():
         # Handle ChatGPT sessions
         if chat_session_id:
             try:
+                logging.info(f"Storing tokens for ChatGPT session {chat_session_id} with realm ID {realm_id}")
                 store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry_str)
                 logging.info(f"QuickBooks authorization successful for ChatGPT session {chat_session_id}")
                 return jsonify({"success": True, "message": "QuickBooks tokens stored for ChatGPT session."}), 200
             except Exception as e:
-                logging.error(f"Failed to store tokens for ChatGPT session: {e}")
+                logging.error(f"Failed to store tokens for ChatGPT session {chat_session_id}: {e}")
                 return jsonify({"error": "Failed to store tokens for ChatGPT session."}), 500
 
         # Handle App-based sessions
@@ -1430,6 +1432,7 @@ def callback():
 
         # Store tokens for app-based user
         try:
+            logging.info(f"Storing tokens for user {user_id} with realm ID {realm_id}")
             supabase.table("quickbooks_tokens").upsert({
                 "id": user_id,
                 "realm_id": realm_id,
@@ -1444,9 +1447,8 @@ def callback():
             return jsonify({"error": "Failed to store tokens for user."}), 500
 
     except Exception as e:
-        logging.error(f"Error in /callback: {e}")
+        logging.error(f"Error in /callback: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/dashboard')
 def dashboard():
