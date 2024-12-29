@@ -950,14 +950,33 @@ def fetch_user_data():
         return {"error": str(e)}, 500
 
 
-@app.route('/quickbooks-login')
+@app.route('/quickbooks-login', methods=['GET'])
 def quickbooks_login():
     """
-    Handles QuickBooks OAuth login.
+    Handles QuickBooks OAuth login with dynamic state generation and secure storage.
     """
-    auth_url = f"{AUTHORIZATION_BASE_URL}?client_id={CLIENT_ID}&response_type=code&scope={SCOPE}&redirect_uri={REDIRECT_URI}&state=RandomStateString"
+    # Generate a dynamic state
+    state = generate_random_state()  # Function to generate a unique random string
+    expiry = datetime.utcnow() + timedelta(minutes=30)  # 30-minute expiry
+
+    # Store the state in the database for validation later
+    user_id = get_current_user_id()  # Replace with your user identification logic
+    if not user_id:
+        return jsonify({"error": "User not authenticated."}), 401
+
+    supabase.table("chatgpt_oauth_states").insert({
+        "state": state,
+        "user_id": user_id,
+        "expiry": expiry.isoformat(),
+    }).execute()
+
+    # Construct the QuickBooks OAuth URL
+    auth_url = f"{AUTHORIZATION_BASE_URL}?client_id={CLIENT_ID}&response_type=code" \
+               f"&scope={SCOPE}&redirect_uri={REDIRECT_URI}&state={state}"
     logging.info(f"Redirecting to QuickBooks login: {auth_url}")
+
     return redirect(auth_url)
+
 
 
 @app.route('/logout')
@@ -1303,13 +1322,14 @@ def callback():
         state = request.args.get('state')
 
         if not code or not realm_id or not state:
+            logging.error("Missing required parameters (code, realmId, or state).")
             return jsonify({"error": "Missing required parameters (code, realmId, or state)."}), 400
 
         # Validate state (CSRF protection)
         response = supabase.table("chatgpt_oauth_states").select("*").eq("state", state).execute()
         if not response.data:
             logging.error(f"Invalid state parameter: {state}")
-            raise ValueError("Invalid or expired state parameter.")
+            return jsonify({"error": "Invalid or expired state parameter."}), 400
 
         stored_state = response.data[0]
         chat_session_id = stored_state.get("chat_session_id")
@@ -1317,7 +1337,7 @@ def callback():
 
         if datetime.utcnow() > expiry:
             logging.error(f"State expired for session {chat_session_id}: {state}")
-            raise ValueError("State token expired.")
+            return jsonify({"error": "State token expired."}), 400
 
         # Exchange authorization code for tokens
         auth_header = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
@@ -1331,11 +1351,11 @@ def callback():
 
         if token_response.status_code != 200:
             logging.error(f"Token exchange failed: {token_response.text}")
-            raise ValueError(f"Failed to retrieve tokens: {token_response.text}")
+            return jsonify({"error": f"Failed to retrieve tokens: {token_response.text}"}), 400
 
         tokens = token_response.json()
         access_token = tokens['access_token']
-        refresh_token = tokens['refresh_token']
+        refresh_token = tokens.get('refresh_token')  # Some providers may not return a refresh token
         expiry = datetime.utcnow() + timedelta(seconds=tokens['expires_in'])
         expiry_str = expiry.isoformat()
 
@@ -1348,13 +1368,22 @@ def callback():
         # Handle App-based sessions
         session_token = request.cookies.get('session_token')
         if not session_token:
-            raise ValueError("No Authorization token provided.")
+            logging.error("No session token provided.")
+            return jsonify({"error": "No session token provided."}), 400
 
-        decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        try:
+            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            logging.error("Session token expired.")
+            return jsonify({"error": "Session token expired."}), 401
+        except jwt.InvalidTokenError:
+            logging.error("Invalid session token.")
+            return jsonify({"error": "Invalid session token."}), 401
+
         user_id = decoded.get("user_id")
-
         if not user_id:
-            raise ValueError("User ID missing from session token.")
+            logging.error("User ID missing from session token.")
+            return jsonify({"error": "User ID missing from session token."}), 400
 
         # Store tokens for app-based user
         supabase.table("quickbooks_tokens").upsert({
@@ -1371,7 +1400,6 @@ def callback():
     except Exception as e:
         logging.error(f"Error in /callback: {e}, state: {state}, code: {code}, realmId: {realm_id}")
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route('/dashboard')
