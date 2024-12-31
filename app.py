@@ -1259,6 +1259,8 @@ def link_chat_session():
             "chat_session_id": chat_session_id,
             "updated_at": datetime.utcnow().isoformat()
         }
+        logging.info(f"Payload for user_profiles update: {profile_update_payload}")
+
         profile_update_response = supabase.table("user_profiles").update(profile_update_payload).eq("id", user_id).execute()
 
         if not profile_update_response.data:
@@ -1271,6 +1273,7 @@ def link_chat_session():
     except Exception as e:
         logging.error(f"Error in /link-chat-session: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+
 
 
 
