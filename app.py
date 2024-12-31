@@ -1185,15 +1185,14 @@ def generate_new_state(chat_session_id):
         raise Exception("Failed to generate and store OAuth state.")
 
 
-@app.route('/link-chat-session', methods=['POST'])
+@app.route('/link-chat-session', methods=['POST', 'GET'])
 def link_chat_session():
     """
     Links a ChatGPT chatSessionId to the logged-in user in Supabase.
     """
     try:
-        # Parse request data
-        data = request.get_json()
-        chat_session_id = data.get('chatSessionId')
+        # Handle both GET and POST methods
+        chat_session_id = request.args.get('chatSessionId') or request.json.get('chatSessionId')
         session_token = request.cookies.get('session_token')
 
         if not chat_session_id:
@@ -1220,8 +1219,8 @@ def link_chat_session():
             "chat_session_id": chat_session_id
         }).eq("id", user_id).execute()
 
-        if response.error:
-            logging.error(f"Failed to link chatSessionId to user {user_id}: {response.error}")
+        if not response.data:  # Adjust to check response validity
+            logging.error(f"Failed to link chatSessionId to user {user_id}. Response: {response}")
             return jsonify({"error": "Failed to link chatSessionId to user"}), 500
 
         logging.info(f"chatSessionId {chat_session_id} successfully linked to user {user_id}.")
@@ -1230,6 +1229,7 @@ def link_chat_session():
     except Exception as e:
         logging.error(f"Error in /link-chat-session: {e}")
         return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+
 
 
 
