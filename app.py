@@ -1239,7 +1239,6 @@ def link_chat_session():
 
 
 
-
 @app.route('/session/status', methods=['GET'])
 def get_session_status():
     """
