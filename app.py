@@ -735,20 +735,22 @@ def index():
 @limiter.limit("5 per minute", error_message="Too many login attempts. Please try again in a minute.")
 def login():
     if request.method == 'GET':
-        return render_template('login.html')
+        # Pass chatSessionId to the login template if present in the query parameters
+        chat_session_id = request.args.get('chatSessionId')
+        return render_template('login.html', chatSessionId=chat_session_id)
 
     try:
         data = request.form
         email = data.get('email').strip().lower()
         password = data.get('password')
-        chat_session_id = request.args.get('chatSessionId')  # Get ChatGPT session ID if provided
+        chat_session_id = data.get('chatSessionId')  # Retrieve chatSessionId from the hidden input
 
         logging.info(f"Received chatSessionId: {chat_session_id}")
 
         # Validation for Missing Fields
         if not email or not password:
             error_message = "Email and password are required."
-            return render_template('login.html', error_message=error_message), 400
+            return render_template('login.html', error_message=error_message, chatSessionId=chat_session_id), 400
 
         # Check if the user exists
         response = supabase.table("users").select("id").eq("email", email).execute()
@@ -757,7 +759,7 @@ def login():
         if not response.data or len(response.data) == 0:
             error_message = "No account found with that email."
             logging.warning(f"Login failed: No account found for email {email}.")
-            return render_template('login.html', error_message=error_message), 401
+            return render_template('login.html', error_message=error_message, chatSessionId=chat_session_id), 401
 
         user_id = response.data[0]["id"]
 
@@ -775,7 +777,7 @@ def login():
                 error_message = "Session expired. Please log in again."
             else:
                 error_message = "An error occurred during login. Please try again."
-            return render_template('login.html', error_message=error_message), 401
+            return render_template('login.html', error_message=error_message, chatSessionId=chat_session_id), 401
 
         # Generate session token
         token = generate_session_token(user_id, email)
@@ -783,11 +785,16 @@ def login():
 
         # Link ChatGPT session ID to user (if provided)
         if chat_session_id:
-            link_response = supabase.table("user_profiles").update({
-                "chat_session_id": chat_session_id
-            }).eq("id", user_id).execute()
-            if link_response.error:
-                logging.warning(f"Failed to link chatSessionId for user {user_id}. Response: {link_response}")
+            try:
+                link_response = supabase.table("user_profiles").update({
+                    "chat_session_id": chat_session_id
+                }).eq("id", user_id).execute()
+                if link_response.error:
+                    logging.warning(f"Failed to link chatSessionId for user {user_id}. Response: {link_response}")
+                else:
+                    logging.info(f"Successfully linked chatSessionId {chat_session_id} to user {user_id}.")
+            except Exception as e:
+                logging.error(f"Error linking chatSessionId for user {user_id}: {e}")
 
         # Set token in cookie
         resp = make_response(
@@ -810,6 +817,7 @@ def login():
         logging.error(f"Error during login: {e}", exc_info=True)
         error_message = "An unexpected error occurred during login. Please try again."
         return render_template('login.html', error_message=error_message), 500
+
 
 
 # Create Account Route
@@ -1105,12 +1113,15 @@ def start_oauth_for_chatgpt():
         if not chat_session_id:
             return jsonify({"error": "chatSessionId is required"}), 400
 
+        logging.info(f"Received chatSessionId: {chat_session_id}")
+
         # Check if the session is linked to a middleware user
         user_check = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
 
         if not user_check.data:
             # Redirect to the middleware app login URL
             middleware_login_url = f"https://quickbooks-gpt-app.onrender.com/login?chatSessionId={chat_session_id}"
+            logging.info(f"ChatGPT session not linked to a user. Redirecting to login: {middleware_login_url}")
             return jsonify({"loginUrl": middleware_login_url}), 200
 
         # Check if a valid state already exists for this session
@@ -1121,12 +1132,15 @@ def start_oauth_for_chatgpt():
             if datetime.utcnow() < expiry:
                 # Reuse the existing valid state
                 state = stored_state["state"]
+                logging.info(f"Reusing valid state for chatSessionId {chat_session_id}: {state}")
             else:
                 # State expired, generate a new one
                 state = generate_new_state(chat_session_id)
+                logging.info(f"Generated new state for expired session {chat_session_id}: {state}")
         else:
             # No state exists, generate a new one
             state = generate_new_state(chat_session_id)
+            logging.info(f"Generated new state for new session {chat_session_id}: {state}")
 
         # Construct the QuickBooks OAuth login URL
         quickbooks_oauth_url = (
@@ -1138,12 +1152,14 @@ def start_oauth_for_chatgpt():
             f"state={state}"
         )
 
+        logging.info(f"Generated QuickBooks OAuth URL for chatSessionId {chat_session_id}: {quickbooks_oauth_url}")
+
         # Return the QuickBooks login URL
         return jsonify({"loginUrl": quickbooks_oauth_url}), 200
 
     except Exception as e:
-        logging.error(f"Error in start_oauth_for_chatgpt: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Error in start_oauth_for_chatgpt: {e}", exc_info=True)
+        return jsonify({"error": "An error occurred while processing the OAuth flow. Please try again later."}), 500
 
 
 # Helper function to generate and store a new state
@@ -1162,10 +1178,11 @@ def generate_new_state(chat_session_id):
             "expiry": expiry
         }).execute()
 
+        logging.info(f"Stored new state for chatSessionId {chat_session_id}: {state}")
         return state
     except Exception as e:
-        logging.error(f"Error generating new state: {e}")
-        raise
+        logging.error(f"Error generating new state for chatSessionId {chat_session_id}: {e}", exc_info=True)
+        raise Exception("Failed to generate and store OAuth state.")
 
 
 @app.route('/link-chat-session', methods=['POST'])
@@ -1174,7 +1191,8 @@ def link_chat_session():
     Links a ChatGPT chatSessionId to the logged-in user in Supabase.
     """
     try:
-        data = request.json
+        # Parse request data
+        data = request.get_json()
         chat_session_id = data.get('chatSessionId')
         session_token = request.cookies.get('session_token')
 
@@ -1185,25 +1203,34 @@ def link_chat_session():
             return jsonify({"error": "User not authenticated. Please log in first."}), 401
 
         # Decode the session token
-        decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        try:
+            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Session token has expired. Please log in again."}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid session token. Please log in again."}), 401
+
         user_id = decoded.get("user_id")
 
         if not user_id:
-            return jsonify({"error": "Invalid session token"}), 401
+            return jsonify({"error": "Invalid session token: user_id not found."}), 401
 
-        # Link chatSessionId to the user
+        # Link chatSessionId to the user in Supabase
         response = supabase.table("user_profiles").update({
             "chat_session_id": chat_session_id
         }).eq("id", user_id).execute()
 
-        if not response.data:
+        if response.error:
+            logging.error(f"Failed to link chatSessionId to user {user_id}: {response.error}")
             return jsonify({"error": "Failed to link chatSessionId to user"}), 500
 
+        logging.info(f"chatSessionId {chat_session_id} successfully linked to user {user_id}.")
         return jsonify({"success": True, "message": "chatSessionId linked successfully"}), 200
 
     except Exception as e:
-        logging.error(f"Error linking chatSessionId: {e}")
-        return jsonify({"error": "An error occurred while linking chatSessionId. Try again later."}), 500
+        logging.error(f"Error in /link-chat-session: {e}")
+        return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+
 
 
 @app.route('/session/status', methods=['GET'])
@@ -1212,27 +1239,30 @@ def get_session_status():
     Checks the authentication status of a ChatGPT session.
     """
     try:
+        # Retrieve chatSessionId from query parameters
         chat_session_id = request.args.get('chatSessionId')
         if not chat_session_id:
             return jsonify({"authenticated": False, "message": "chatSessionId is required"}), 400
 
+        # Query Supabase for the session
         response = supabase.table("chatgpt_tokens").select("*").eq("chat_session_id", chat_session_id).execute()
         if not response.data:
+            logging.warning(f"No tokens found for chatSessionId {chat_session_id}.")
             return jsonify({"authenticated": False, "message": "No tokens found. Please log in."}), 401
 
+        # Check token expiration
         tokens = response.data[0]
         expiry = datetime.fromisoformat(tokens['expiry'])
-
         if datetime.utcnow() > expiry:
             logging.info(f"Access token for chatSessionId {chat_session_id} expired.")
             return jsonify({"authenticated": False, "message": "Session expired. Please reauthenticate."}), 401
 
+        logging.info(f"Session {chat_session_id} is active and authenticated.")
         return jsonify({"authenticated": True, "message": "Session is active."}), 200
 
     except Exception as e:
         logging.error(f"Error in /session/status: {e}")
-        return jsonify({"authenticated": False, "message": "An error occurred. Try again later."}), 500
-
+        return jsonify({"authenticated": False, "message": "An unexpected error occurred. Try again later."}), 500
 
 
 def refresh_access_token_for_chatgpt(chat_session_id, refresh_token):
