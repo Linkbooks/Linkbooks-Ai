@@ -279,17 +279,37 @@ def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, re
     Stores QuickBooks tokens associated with a ChatGPT session ID in Supabase.
     """
     try:
-        supabase.table("chatgpt_tokens").upsert({
+        # Retrieve user_id based on chat_session_id
+        response = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+        if not response.data:
+            logging.error(f"No user found for chatSessionId: {chat_session_id}")
+            raise ValueError("User not found for given chatSessionId")
+
+        user_id = response.data[0]["id"]
+
+        # Payload for upsert
+        payload = {
             "chat_session_id": chat_session_id,
+            "user_id": user_id,  # Add user_id to the tokens table
             "realm_id": realm_id,
             "access_token": access_token,
             "refresh_token": refresh_token,
             "expiry": expiry
-        }).execute()
-        logging.info(f"Tokens stored for ChatGPT session {chat_session_id}")
+        }
+        logging.info(f"Payload for chatgpt_tokens upsert: {payload}")
+
+        # Upsert tokens
+        token_response = supabase.table("chatgpt_tokens").upsert(payload).execute()
+        if token_response.error:
+            logging.error(f"Failed to store tokens: {token_response.error}")
+            raise ValueError("Failed to store tokens")
+
+        logging.info(f"Tokens stored successfully for chatSessionId: {chat_session_id}")
+
     except Exception as e:
-        logging.error(f"Failed to store tokens for ChatGPT session {chat_session_id}: {e}")
+        logging.error(f"Error storing tokens for ChatGPT session {chat_session_id}: {e}")
         raise
+
 
 def log_supabase_operation(operation_desc, supabase_call):
     """
@@ -1443,9 +1463,34 @@ def callback():
         if chat_session_id:
             try:
                 logging.info(f"Storing tokens for ChatGPT session {chat_session_id} with realm ID {realm_id}")
-                store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, refresh_token, expiry_str)
+
+                # Fetch the user_id linked to this chat_session_id
+                user_profile = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+                if not user_profile.data or len(user_profile.data) == 0:
+                    logging.error(f"No user linked to chatSessionId {chat_session_id}.")
+                    return jsonify({"error": "No user linked to this ChatGPT session ID."}), 400
+
+                user_id = user_profile.data[0]["id"]
+
+                # Store tokens in the chatgpt_tokens table
+                store_tokens_for_chatgpt_session(
+                    chat_session_id=chat_session_id,
+                    realm_id=realm_id,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    expiry=expiry_str
+                )
+
+                # Update state and authentication status in chatgpt_oauth_states
+                supabase.table("chatgpt_oauth_states").update({
+                    "state": "completed",
+                    "is_authenticated": True,
+                    "user_id": user_id
+                }).eq("chat_session_id", chat_session_id).execute()
+
                 logging.info(f"QuickBooks authorization successful for ChatGPT session {chat_session_id}")
                 return jsonify({"success": True, "message": "QuickBooks tokens stored for ChatGPT session."}), 200
+
             except Exception as e:
                 logging.error(f"Failed to store tokens for ChatGPT session {chat_session_id}: {e}")
                 return jsonify({"error": "Failed to store tokens for ChatGPT session."}), 500
@@ -1489,6 +1534,7 @@ def callback():
     except Exception as e:
         logging.error(f"Error in /callback: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/dashboard')
 def dashboard():
