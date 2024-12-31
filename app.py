@@ -1185,14 +1185,14 @@ def generate_new_state(chat_session_id):
         raise Exception("Failed to generate and store OAuth state.")
 
 
-@app.route('/link-chat-session', methods=['POST', 'GET'])
+@app.route('/link-chat-session', methods=['GET'])
 def link_chat_session():
     """
     Links a ChatGPT chatSessionId to the logged-in user in Supabase.
     """
     try:
-        # Handle both GET and POST methods
-        chat_session_id = request.args.get('chatSessionId') or request.json.get('chatSessionId')
+        # Extract chatSessionId from the query parameters
+        chat_session_id = request.args.get('chatSessionId')
         session_token = request.cookies.get('session_token')
 
         if not chat_session_id:
@@ -1214,17 +1214,24 @@ def link_chat_session():
         if not user_id:
             return jsonify({"error": "Invalid session token: user_id not found."}), 401
 
-        # Link chatSessionId to the user in Supabase
-        response = supabase.table("user_profiles").update({
-            "chat_session_id": chat_session_id
-        }).eq("id", user_id).execute()
+        # Set initial state and authentication status
+        state = "initiated"
+        is_authenticated = False  # User not yet authenticated with QuickBooks
 
-        if not response.data:  # Adjust to check response validity
-            logging.error(f"Failed to link chatSessionId to user {user_id}. Response: {response}")
+        # Upsert the chat session and state
+        response = supabase.table("chatgpt_oauth_states").upsert({
+            "chat_session_id": chat_session_id,
+            "state": state,
+            "expiry": (datetime.utcnow() + timedelta(minutes=30)).isoformat(),
+            "is_authenticated": is_authenticated
+        }).execute()
+
+        if response.error:
+            logging.error(f"Failed to link chatSessionId {chat_session_id} for user {user_id}: {response.error}")
             return jsonify({"error": "Failed to link chatSessionId to user"}), 500
 
-        logging.info(f"chatSessionId {chat_session_id} successfully linked to user {user_id}.")
-        return jsonify({"success": True, "message": "chatSessionId linked successfully"}), 200
+        logging.info(f"chatSessionId {chat_session_id} successfully linked with state {state} for user {user_id}.")
+        return jsonify({"success": True, "message": "chatSessionId linked successfully", "state": state}), 200
 
     except Exception as e:
         logging.error(f"Error in /link-chat-session: {e}")
