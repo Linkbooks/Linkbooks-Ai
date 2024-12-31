@@ -1234,29 +1234,36 @@ def link_chat_session():
         if not user_id:
             return jsonify({"error": "Invalid session token: user_id not found."}), 401
 
-        # Set initial state and authentication status
+        # Prepare payload for upsert
         state = "initiated"
         is_authenticated = False  # User not yet authenticated with QuickBooks
+        expiry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
 
-        # Upsert the chat session and state
-        response = supabase.table("chatgpt_oauth_states").upsert({
+        payload = {
             "chat_session_id": chat_session_id,
             "user_id": user_id,
             "state": state,
-            "expiry": (datetime.utcnow() + timedelta(minutes=30)).isoformat(),
-            "is_authenticated": is_authenticated
-        }).execute()
+            "expiry": expiry,
+            "is_authenticated": is_authenticated,
+        }
+
+        logging.info(f"Payload for chatgpt_oauth_states upsert: {payload}")
+
+        # Perform upsert with conflict resolution on user_id
+        response = supabase.table("chatgpt_oauth_states").upsert(payload, on_conflict=["user_id"]).execute()
 
         if not response.data:
-            logging.error(f"Failed to link chatSessionId {chat_session_id} for user {user_id}: {response}")
+            logging.error(f"Failed to link chatSessionId {chat_session_id} for user {user_id}. Response: {response}")
             return jsonify({"error": "Failed to link chatSessionId to user"}), 500
 
         logging.info(f"chatSessionId {chat_session_id} successfully linked with state {state} for user {user_id}.")
         return jsonify({"success": True, "message": "chatSessionId linked successfully", "state": state}), 200
 
     except Exception as e:
-        logging.error(f"Error in /link-chat-session: {e}")
+        logging.error(f"Error in /link-chat-session: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+
+
 
 
 @app.route('/session/status', methods=['GET'])
