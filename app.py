@@ -1211,7 +1211,7 @@ def link_chat_session():
     Links a ChatGPT chatSessionId to the logged-in user in Supabase.
     """
     try:
-        # Extract chatSessionId from the query parameters
+        # Extract chatSessionId and session_token
         chat_session_id = request.args.get('chatSessionId')
         session_token = request.cookies.get('session_token')
 
@@ -1221,7 +1221,7 @@ def link_chat_session():
         if not session_token:
             return jsonify({"error": "User not authenticated. Please log in first."}), 401
 
-        # Decode the session token
+        # Decode session token
         try:
             decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
@@ -1230,7 +1230,6 @@ def link_chat_session():
             return jsonify({"error": "Invalid session token. Please log in again."}), 401
 
         user_id = decoded.get("user_id")
-
         if not user_id:
             return jsonify({"error": "Invalid session token: user_id not found."}), 401
 
@@ -1257,11 +1256,16 @@ def link_chat_session():
         # Update user_profiles with chat_session_id
         profile_update_payload = {
             "chat_session_id": chat_session_id,
-            "updated_at": datetime.utcnow().isoformat()
+            "updated_at": datetime.utcnow().isoformat(),
         }
         logging.info(f"Payload for user_profiles update: {profile_update_payload}")
 
-        profile_update_response = supabase.table("user_profiles").update(profile_update_payload).eq("id", user_id).execute()
+        profile_update_response = (
+            supabase.table("user_profiles")
+            .update(profile_update_payload)
+            .eq("id", user_id)
+            .execute()
+        )
 
         if not profile_update_response.data:
             logging.error(f"Failed to update user_profiles for user {user_id}: {profile_update_response}")
@@ -1273,6 +1277,7 @@ def link_chat_session():
     except Exception as e:
         logging.error(f"Error in /link-chat-session: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+
 
 
 
