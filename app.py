@@ -1238,29 +1238,25 @@ def link_chat_session():
         state = "initiated"
         is_authenticated = False  # User not yet authenticated with QuickBooks
 
-        # Log Supabase payloads
-        payload_oauth_states = {
+        # Upsert the chat session and state
+        response = supabase.table("chatgpt_oauth_states").upsert({
             "chat_session_id": chat_session_id,
             "user_id": user_id,
             "state": state,
             "expiry": (datetime.utcnow() + timedelta(minutes=30)).isoformat(),
             "is_authenticated": is_authenticated
-        }
-        logging.info(f"Payload for chatgpt_oauth_states upsert: {payload_oauth_states}")
+        }).execute()
 
-        # Upsert the chat session and state
-        response = supabase.table("chatgpt_oauth_states").upsert(payload_oauth_states).execute()
-        if response.error:
-            logging.error(f"Failed to upsert chatgpt_oauth_states: {response.error}")
-            return jsonify({"error": "Failed to update chatgpt_oauth_states"}), 500
+        if not response.data:
+            logging.error(f"Failed to link chatSessionId {chat_session_id} for user {user_id}: {response}")
+            return jsonify({"error": "Failed to link chatSessionId to user"}), 500
 
-        logging.info(f"chatSessionId {chat_session_id} successfully linked for user {user_id}.")
+        logging.info(f"chatSessionId {chat_session_id} successfully linked with state {state} for user {user_id}.")
         return jsonify({"success": True, "message": "chatSessionId linked successfully", "state": state}), 200
 
     except Exception as e:
         logging.error(f"Error in /link-chat-session: {e}")
         return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
-
 
 
 @app.route('/session/status', methods=['GET'])
