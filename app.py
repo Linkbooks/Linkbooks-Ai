@@ -381,9 +381,9 @@ def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, re
 
         token_response = supabase.table("chatgpt_tokens").upsert(payload).execute()
 
-        if token_response.status_code not in (200, 201):
+        if token_response.error:  # Proper error handling
             logging.error(
-                f"Failed to store tokens. status_code={token_response.status_code}, data={token_response.data}"
+                f"Failed to store tokens. Error: {token_response.error}"
             )
             raise ValueError("Failed to store tokens")
 
@@ -534,17 +534,18 @@ def login():
                 link_response = supabase.table("user_profiles").update({
                     "chat_session_id": chat_session_id
                 }).eq("id", user_id).execute()
-        
-                # Check status_code or data, not .error
-                if link_response.status_code not in (200, 201):
+
+                # Check for errors in the response
+                if link_response.error:
                     logging.warning(
                         f"Failed to link chatSessionId for user {user_id}. "
-                        f"status_code={link_response.status_code}, data={link_response.data}"
+                        f"Error: {link_response.error}"
                     )
                 else:
                     logging.info(f"Successfully linked chatSessionId {chat_session_id} to user {user_id}.")
             except Exception as e:
                 logging.error(f"Error linking chatSessionId for user {user_id}: {e}")
+
 
 
         resp = make_response(
@@ -874,12 +875,12 @@ def link_chat_session():
 
         oauth_states_response = supabase.table("chatgpt_oauth_states").upsert(oauth_states_payload).execute()
 
-        if oauth_states_response.status_code not in (200, 201):
-            logging.error(
-                f"Failed to upsert chatgpt_oauth_states for user {user_id}. "
-                f"status_code={oauth_states_response.status_code}, data={oauth_states_response.data}"
-            )
+        if oauth_states_response.error:  # Correct error handling
+            logging.error(f"Failed to upsert chatgpt_oauth_states for user {user_id}: {oauth_states_response.error}")
             return jsonify({"error": "Failed to link chatSessionId to user"}), 500
+
+        logging.info(f"Successfully upserted chatgpt_oauth_states for user {user_id}.")
+
 
 
         profile_update_payload = {
