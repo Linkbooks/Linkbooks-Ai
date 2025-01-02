@@ -252,7 +252,8 @@ def get_quickbooks_tokens(user_id):
     """
     try:
         response = supabase.table("quickbooks_tokens").select("*").eq("id", user_id).execute()
-        if not response.data:
+        if not response.data: # No tokens found
+            logging.error(f"No QuickBooks tokens found for user {user_id}.")
             raise Exception("No QuickBooks tokens found for the user.")
         return response.data[0]
     except Exception as e:
@@ -272,6 +273,7 @@ def save_quickbooks_tokens(user_id, realm_id, access_token, refresh_token, token
             "token_expiry": token_expiry,
             "last_updated": datetime.utcnow().isoformat()
         }).execute()
+        
         logging.info("QuickBooks tokens saved successfully.")
     except Exception as e:
         logging.error(f"Error saving QuickBooks tokens: {e}")
@@ -381,11 +383,10 @@ def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, re
 
         token_response = supabase.table("chatgpt_tokens").upsert(payload).execute()
 
-        if token_response.error:  # Proper error handling
-            logging.error(
-                f"Failed to store tokens. Error: {token_response.error}"
-            )
+        if not token_response.data:  # Ensure response contains data
+            logging.error(f"Failed to store tokens. Response: {token_response}")
             raise ValueError("Failed to store tokens")
+
 
 
         logging.info(f"Tokens stored successfully for chatSessionId: {chat_session_id}")
@@ -875,13 +876,12 @@ def link_chat_session():
 
         oauth_states_response = supabase.table("chatgpt_oauth_states").upsert(oauth_states_payload).execute()
 
-        if oauth_states_response.error:  # Correct error handling
-            logging.error(f"Failed to upsert chatgpt_oauth_states for user {user_id}: {oauth_states_response.error}")
+        # Ensure the response contains data
+        if not oauth_states_response.data:
+            logging.error(f"Failed to upsert chatgpt_oauth_states for user {user_id}: {oauth_states_response}")
             return jsonify({"error": "Failed to link chatSessionId to user"}), 500
 
         logging.info(f"Successfully upserted chatgpt_oauth_states for user {user_id}.")
-
-
 
         profile_update_payload = {
             "chat_session_id": chat_session_id,
@@ -896,6 +896,7 @@ def link_chat_session():
             .execute()
         )
 
+        # Check if the update was successful
         if not profile_update_response.data:
             logging.error(f"Failed to update user_profiles for user {user_id}: {profile_update_response}")
             return jsonify({"error": "Failed to update user profile with chatSessionId"}), 500
@@ -906,6 +907,7 @@ def link_chat_session():
     except Exception as e:
         logging.error(f"Error in /link-chat-session: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+
 
 
 @app.route('/session/status', methods=['GET'])
@@ -958,7 +960,7 @@ def refresh_access_token_for_chatgpt(chat_session_id, refresh_token):
                 "expiry": expiry
             }).eq("chat_session_id", chat_session_id).execute()
 
-            if not update_resp.data:
+            if not update_resp.data: # Ensure update was successful
                 raise Exception("Failed to update tokens in Supabase")
 
             logging.info(f"Access token refreshed for ChatGPT session {chat_session_id}")
