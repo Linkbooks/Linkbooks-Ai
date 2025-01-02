@@ -1246,7 +1246,7 @@ def fetch_reports_route():
 
         # Fetch the report
         report_data = fetch_report(
-            user_id=realm_id,  # passing realm_id as user_id in the fetch_report function
+            realm_id=realm_id,  # Ensure realm_id is passed correctly
             report_type=report_type,
             start_date=start_date,
             end_date=end_date
@@ -1261,29 +1261,34 @@ def fetch_reports_route():
         logging.error(f"Error in /fetch-reports: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 def fetch_report(user_id, report_type, start_date=None, end_date=None):
-    """
-    Fetches a QuickBooks report by calling /reports/<report_type>.
-    (Note: here user_id is actually the realm_id.)
-    """
     try:
-        # Attempt to treat user_id as realm_id for the request
-        tokens = get_quickbooks_tokens(user_id)  # This might need customizing if your schema differs
+        # Fetch tokens using user_id
+        response = supabase.table("quickbooks_tokens").select("*").eq("id", user_id).execute()
+        if not response.data:
+            logging.error(f"No tokens found for user_id {user_id}.")
+            raise Exception("No QuickBooks tokens found for this user ID.")
+
+        tokens = response.data[0]
+        realm_id = tokens.get('realm_id')
         access_token = tokens.get('access_token')
         expiry = tokens.get('token_expiry')
 
-        if not access_token:
-            raise Exception("No access token or realm_id found.")
+        if not access_token or not realm_id:
+            raise Exception("Access token or realm_id missing.")
 
+        # Check token expiry
         if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
-            # If you wanted to auto-refresh in the app-based flow, call refresh_access_token(user_id)
-            pass
+            logging.error(f"Token expired for user_id {user_id}.")
+            raise Exception("Access token expired. Please reauthenticate.")
 
+        # Use realm_id for QuickBooks API call
         headers = {
             'Authorization': f"Bearer {access_token}",
             'Accept': 'application/json'
         }
-        url = f"{QUICKBOOKS_API_BASE_URL}{user_id}/reports/{report_type}"
+        url = f"{QUICKBOOKS_API_BASE_URL}{realm_id}/reports/{report_type}"
 
         params = {}
         if start_date:
@@ -1292,10 +1297,6 @@ def fetch_report(user_id, report_type, start_date=None, end_date=None):
             params['end_date'] = end_date
 
         response = requests.get(url, headers=headers, params=params)
-        if response.status_code == 401:
-            # Possibly refresh again or handle error
-            pass
-
         if response.status_code != 200:
             raise Exception(f"Report request failed: {response.status_code} {response.text}")
 
@@ -1303,6 +1304,7 @@ def fetch_report(user_id, report_type, start_date=None, end_date=None):
     except Exception as e:
         logging.error(f"Error in fetch_report: {e}")
         raise
+
 
 # ------------------------------------------
 # Business Info
