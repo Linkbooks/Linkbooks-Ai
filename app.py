@@ -501,7 +501,7 @@ def login():
 
         # Check user in 'users' table
         response = supabase.table("users").select("id").eq("email", email).execute()
-        if not response.data or len(response.data) == 0:
+        if response.status_code != 200 or not response.data:
             error_message = "No account found with that email."
             logging.warning(f"Login failed: No account found for email {email}.")
             return render_template('login.html', error_message=error_message, chatSessionId=chat_session_id), 401
@@ -535,18 +535,16 @@ def login():
                     "chat_session_id": chat_session_id
                 }).eq("id", user_id).execute()
 
-                # Check for errors in the response
-                if link_response.error:
+                # Check response status code instead of non-existent 'error' attribute
+                if link_response.status_code not in (200, 201):
                     logging.warning(
                         f"Failed to link chatSessionId for user {user_id}. "
-                        f"Error: {link_response.error}"
+                        f"Status code: {link_response.status_code}, data: {link_response.data}"
                     )
                 else:
                     logging.info(f"Successfully linked chatSessionId {chat_session_id} to user {user_id}.")
             except Exception as e:
                 logging.error(f"Error linking chatSessionId for user {user_id}: {e}")
-
-
 
         resp = make_response(
             redirect(
@@ -569,6 +567,7 @@ def login():
         logging.error(f"Error during login: {e}", exc_info=True)
         error_message = "An unexpected error occurred during login. Please try again."
         return render_template('login.html', error_message=error_message), 500
+
 
 
 # ------------------------------------------
