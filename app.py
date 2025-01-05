@@ -1169,39 +1169,70 @@ def callback():
 # ------------------------------------------
 # Dashboard
 # ------------------------------------------
-@app.route('/dashboard')
+@app.route('/dashboard', methods=['GET'])
 def dashboard():
     """
     Example dashboard route that attempts to show QuickBooks data for a logged-in user.
     """
     try:
+        # Retrieve query parameters
         success_message = request.args.get('quickbooks_login_success')
+        chat_session_id = request.args.get('chatSessionId')  # Include chatSessionId if provided
         token = request.cookies.get('session_token')
+
         if not token:
             logging.info("No session_token found. QuickBooks disconnected.")
-            return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
+            return render_template(
+                'dashboard.html',
+                success_message=success_message,
+                quickbooks_login_needed=True,
+                chatSessionId=chat_session_id
+            )
 
         try:
+            # Decode the session token to extract user_id
             decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
             user_id = decoded.get("user_id")
             if not user_id:
                 logging.warning("No user_id in token. QuickBooks disconnected.")
-                return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
+                return render_template(
+                    'dashboard.html',
+                    success_message=success_message,
+                    quickbooks_login_needed=True,
+                    chatSessionId=chat_session_id
+                )
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
             logging.warning("Token invalid or expired. QuickBooks disconnected.")
-            return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
+            return render_template(
+                'dashboard.html',
+                success_message=success_message,
+                quickbooks_login_needed=True,
+                chatSessionId=chat_session_id
+            )
 
-        # Try fetching QuickBooks data
+        # Attempt to fetch QuickBooks data
         try:
             company_info = get_company_info(user_id)
-            return render_template('dashboard.html', data=company_info, success_message=success_message, quickbooks_login_needed=False)
+            return render_template(
+                'dashboard.html',
+                data=company_info,
+                success_message=success_message,
+                quickbooks_login_needed=False,
+                chatSessionId=chat_session_id
+            )
         except Exception as e:
             logging.warning(f"Error fetching QuickBooks data: {e}")
-            return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True)
+            return render_template(
+                'dashboard.html',
+                success_message=success_message,
+                quickbooks_login_needed=True,
+                chatSessionId=chat_session_id
+            )
 
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
+
 
 # ------------------------------------------
 # Fetch Reports for ChatGPT sessions
