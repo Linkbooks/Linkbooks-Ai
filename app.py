@@ -19,6 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.events import EVENT_JOB_ERROR
+from urllib.parse import quote
 
 # ------------------------------------------------------------------------------
 # Scheduler initialization
@@ -850,65 +851,37 @@ def link_chat_session():
         if not session_token:
             return jsonify({"error": "User not authenticated. Please log in first."}), 401
 
-        try:
-            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
-        except jwt.ExpiredSignatureError:
-            return jsonify({"error": "Session token has expired. Please log in again."}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({"error": "Invalid session token. Please log in again."}), 401
+        # URL encode the chatSessionId
+        encoded_chat_session_id = quote(chat_session_id)
 
-        user_id = decoded.get("user_id")
-        if not user_id:
-            return jsonify({"error": "Invalid session token: user_id not found."}), 401
-
+        # The rest of the code remains unchanged...
         state = "initiated"
         is_authenticated = False
         expiry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
 
         oauth_states_payload = {
             "chat_session_id": chat_session_id,
-            "user_id": user_id,
             "state": state,
             "expiry": expiry,
             "is_authenticated": is_authenticated,
         }
+
         logging.info(f"Payload for chatgpt_oauth_states upsert: {oauth_states_payload}")
 
         oauth_states_response = supabase.table("chatgpt_oauth_states").upsert(oauth_states_payload).execute()
 
         if not oauth_states_response.data:
-            logging.error(f"Failed to upsert chatgpt_oauth_states for user {user_id}: {oauth_states_response}")
-            return jsonify({"error": "Failed to link chatSessionId to user"}), 500
+            logging.error(f"Failed to upsert chatgpt_oauth_states for chatSessionId: {chat_session_id}")
+            return jsonify({"error": "Failed to link chatSessionId"}), 500
 
-        logging.info(f"Successfully upserted chatgpt_oauth_states for user {user_id}.")
-
-        profile_update_payload = {
-            "chat_session_id": chat_session_id,
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        logging.info(f"Payload for user_profiles update: {profile_update_payload}")
-
-        profile_update_response = (
-            supabase.table("user_profiles")
-            .update(profile_update_payload)
-            .eq("id", user_id)
-            .execute()
-        )
-
-        if not profile_update_response.data:
-            logging.error(f"Failed to update user_profiles for user {user_id}: {profile_update_response}")
-            return jsonify({"error": "Failed to update user profile with chatSessionId"}), 500
-
-        logging.info(f"chatSessionId {chat_session_id} successfully linked for user {user_id}.")
-
-        # Redirect to the dashboard with the chatSessionId
-        dashboard_url = url_for('dashboard', chatSessionId=chat_session_id)
-        return redirect(dashboard_url)
+        # Redirect with the properly encoded chatSessionId
+        redirect_url = f"https://quickbooks-gpt-app.onrender.com/dashboard?chatSessionId={encoded_chat_session_id}"
+        logging.info(f"Redirecting to dashboard with chatSessionId: {redirect_url}")
+        return redirect(redirect_url)
 
     except Exception as e:
-        logging.error(f"Error in /link-chat-session: {e}", exc_info=True)
-        return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
-
+        logging.error(f"Error in /link-chat-session: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 
