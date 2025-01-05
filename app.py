@@ -876,7 +876,6 @@ def link_chat_session():
 
         oauth_states_response = supabase.table("chatgpt_oauth_states").upsert(oauth_states_payload).execute()
 
-        # Ensure the response contains data
         if not oauth_states_response.data:
             logging.error(f"Failed to upsert chatgpt_oauth_states for user {user_id}: {oauth_states_response}")
             return jsonify({"error": "Failed to link chatSessionId to user"}), 500
@@ -896,17 +895,20 @@ def link_chat_session():
             .execute()
         )
 
-        # Check if the update was successful
         if not profile_update_response.data:
             logging.error(f"Failed to update user_profiles for user {user_id}: {profile_update_response}")
             return jsonify({"error": "Failed to update user profile with chatSessionId"}), 500
 
         logging.info(f"chatSessionId {chat_session_id} successfully linked for user {user_id}.")
-        return jsonify({"success": True, "message": "chatSessionId linked successfully", "state": state}), 200
+
+        # Redirect to the dashboard with the chatSessionId
+        dashboard_url = url_for('dashboard', chatSessionId=chat_session_id)
+        return redirect(dashboard_url)
 
     except Exception as e:
         logging.error(f"Error in /link-chat-session: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+
 
 
 
