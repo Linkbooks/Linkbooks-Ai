@@ -763,7 +763,7 @@ def logout():
             raise Exception("No user_id found in session token.")
 
         # Revoke QuickBooks tokens
-        qb_response = supabase.table("quickbooks_tokens").select("refresh_token").eq("id", user_id).execute()
+        qb_response = supabase.table("quickbooks_tokens").select("refresh_token").eq("user_id", user_id).execute()
         if qb_response.data:
             refresh_token = qb_response.data[0]["refresh_token"]
             revoke_quickbooks_tokens(refresh_token)
@@ -849,8 +849,9 @@ def link_chat_session():
         chat_session_id = request.args.get('chatSessionId')
         session_token = request.cookies.get('session_token')
 
-        if not chat_session_id:
-            return jsonify({"error": "chatSessionId is required"}), 400
+        if not chat_session_id or not isinstance(chat_session_id, str) or not chat_session_id.strip():
+            logging.error(f"Invalid or missing chat_session_id.")
+            return jsonify({"error": "chatSessionId is required and must be a valid string."}), 400
 
         if not session_token:
             return jsonify({"error": "User not authenticated. Please log in first."}), 401
