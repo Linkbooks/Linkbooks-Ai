@@ -252,7 +252,7 @@ def get_quickbooks_tokens(user_id):
     Retrieve QuickBooks tokens for a given user ID from quickbooks_tokens table.
     """
     try:
-        response = supabase.table("quickbooks_tokens").select("*").eq("id", user_id).execute()
+        response = supabase.table("quickbooks_tokens").select("*").eq("user_id", user_id).execute()
         if not response.data: # No tokens found
             logging.error(f"No QuickBooks tokens found for user {user_id}.")
             raise Exception("No QuickBooks tokens found for the user.")
@@ -769,7 +769,7 @@ def logout():
             revoke_quickbooks_tokens(refresh_token)
 
         # Delete QuickBooks tokens
-        supabase.table("quickbooks_tokens").delete().eq("id", user_id).execute()
+        supabase.table("quickbooks_tokens").delete().eq("user_id", user_id).execute()
 
         # Delete ChatGPT tokens
         chat_response = supabase.table("chatgpt_tokens").select("chat_session_id").eq("realm_id", user_id).execute()
@@ -1280,7 +1280,7 @@ def fetch_reports_route():
         if chat_session_id:
             tokens_response = supabase.table("quickbooks_tokens").select("*").eq("chat_session_id", chat_session_id).execute()
         elif user_id:
-            tokens_response = supabase.table("quickbooks_tokens").select("*").eq("id", user_id).execute()
+            tokens_response = supabase.table("quickbooks_tokens").select("*").eq("user_id", user_id).execute()
         else:
             logging.error("No valid identifier for token retrieval.")
             return jsonify({"error": "No valid identifier for token retrieval."}), 400
@@ -1353,7 +1353,7 @@ def business_info():
         if chat_session_id:
             tokens_response = supabase.table("quickbooks_tokens").select("*").eq("chat_session_id", chat_session_id).execute()
         elif user_id:
-            tokens_response = supabase.table("quickbooks_tokens").select("*").eq("id", user_id).execute()
+            tokens_response = supabase.table("quickbooks_tokens").select("*").eq("user_id", user_id).execute()
         else:
             logging.error("No valid identifier for token retrieval.")
             return jsonify({"error": "No valid identifier for token retrieval."}), 400
