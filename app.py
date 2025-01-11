@@ -689,10 +689,9 @@ def fetch_user_data():
 @app.route('/quickbooks-login', methods=['GET'])
 def quickbooks_login():
     """
-    Initiates QuickBooks OAuth by inserting a row in chatgpt_oauth_states (if applicable) with a random state.
+    Initiates QuickBooks OAuth by inserting or updating a row in chatgpt_oauth_states.
     """
     try:
-        # Extract session token
         session_token = request.cookies.get('session_token')
         if not session_token:
             return jsonify({"error": "User not authenticated. Please log in first."}), 401
@@ -709,23 +708,29 @@ def quickbooks_login():
         if not user_id:
             return jsonify({"error": "User ID missing in session token. Please log in again."}), 401
 
-        # Get chat_session_id from URL or database
         chat_session_id = request.args.get("chatSessionId")
         if not chat_session_id:
-            # Query Supabase for chat_session_id linked to the user
             user_profile_response = supabase.table("user_profiles").select("chat_session_id").eq("id", user_id).execute()
             if user_profile_response.data and user_profile_response.data[0].get("chat_session_id"):
                 chat_session_id = user_profile_response.data[0]["chat_session_id"]
-                logging.info(f"Retrieved chat_session_id from Supabase: {chat_session_id}")
             else:
                 logging.info(f"No chat_session_id linked for user {user_id}. Proceeding as app-based session.")
 
-        # Generate a dynamic state
         state = generate_random_state()
         expiry = datetime.utcnow() + timedelta(minutes=30)
 
-        # Insert into chatgpt_oauth_states if chat_session_id exists
-        if chat_session_id:
+        # Check if an entry already exists
+        existing_entry_response = supabase.table("chatgpt_oauth_states").select("*").eq("user_id", user_id).eq("chat_session_id", chat_session_id).execute()
+        if existing_entry_response.data:
+            logging.info(f"Updating existing entry for user_id={user_id} and chat_session_id={chat_session_id}.")
+            supabase.table("chatgpt_oauth_states").update({
+                "state": state,
+                "expiry": expiry.isoformat(),
+                "is_authenticated": False,
+            }).eq("user_id", user_id).eq("chat_session_id", chat_session_id).execute()
+
+        else:
+            # Insert new entry
             oauth_states_payload = {
                 "state": state,
                 "chat_session_id": chat_session_id,
@@ -736,7 +741,7 @@ def quickbooks_login():
             logging.info(f"Inserting into chatgpt_oauth_states: {oauth_states_payload}")
             supabase.table("chatgpt_oauth_states").insert(oauth_states_payload).execute()
 
-        # Construct the QuickBooks OAuth URL
+        # Redirect to QuickBooks login
         auth_url = (
             f"{AUTHORIZATION_BASE_URL}?"
             f"client_id={CLIENT_ID}&"
@@ -751,6 +756,7 @@ def quickbooks_login():
     except Exception as e:
         logging.error(f"Error in /quickbooks-login: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 
 # ------------------------------------------
