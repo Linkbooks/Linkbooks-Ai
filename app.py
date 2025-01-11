@@ -689,14 +689,15 @@ def fetch_user_data():
 @app.route('/quickbooks-login', methods=['GET'])
 def quickbooks_login():
     """
-    Initiates QuickBooks OAuth by inserting a row in chatgpt_oauth_states with a random state.
+    Initiates QuickBooks OAuth by inserting a row in chatgpt_oauth_states (if applicable) with a random state.
     """
     try:
+        # Extract session token
         session_token = request.cookies.get('session_token')
         if not session_token:
             return jsonify({"error": "User not authenticated. Please log in first."}), 401
 
-        # Decode session_token
+        # Decode session token
         try:
             decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
@@ -708,22 +709,32 @@ def quickbooks_login():
         if not user_id:
             return jsonify({"error": "User ID missing in session token. Please log in again."}), 401
 
+        # Get chat_session_id from URL or database
         chat_session_id = request.args.get("chatSessionId")
-        if chat_session_id:
-            logging.info(f"ChatGPT session detected: {chat_session_id}")
-        else:
-            logging.info(f"App-based session detected for user: {user_id}")
+        if not chat_session_id:
+            # Query Supabase for chat_session_id linked to the user
+            user_profile_response = supabase.table("user_profiles").select("chat_session_id").eq("id", user_id).execute()
+            if user_profile_response.data and user_profile_response.data[0].get("chat_session_id"):
+                chat_session_id = user_profile_response.data[0]["chat_session_id"]
+                logging.info(f"Retrieved chat_session_id from Supabase: {chat_session_id}")
+            else:
+                logging.info(f"No chat_session_id linked for user {user_id}. Proceeding as app-based session.")
 
         # Generate a dynamic state
         state = generate_random_state()
         expiry = datetime.utcnow() + timedelta(minutes=30)
 
-        supabase.table("chatgpt_oauth_states").insert({
-            "state": state,
-            "user_id": user_id,
-            "chat_session_id": chat_session_id,  # Can be None for app-based
-            "expiry": expiry.isoformat()
-        }).execute()
+        # Insert into chatgpt_oauth_states if chat_session_id exists
+        if chat_session_id:
+            oauth_states_payload = {
+                "state": state,
+                "chat_session_id": chat_session_id,
+                "user_id": user_id,
+                "expiry": expiry.isoformat(),
+                "is_authenticated": False,
+            }
+            logging.info(f"Inserting into chatgpt_oauth_states: {oauth_states_payload}")
+            supabase.table("chatgpt_oauth_states").insert(oauth_states_payload).execute()
 
         # Construct the QuickBooks OAuth URL
         auth_url = (
@@ -736,9 +747,11 @@ def quickbooks_login():
         )
         logging.info(f"Redirecting to QuickBooks login: {auth_url}")
         return redirect(auth_url)
+
     except Exception as e:
-        logging.error(f"Error in /quickbooks-login: {e}")
+        logging.error(f"Error in /quickbooks-login: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 # ------------------------------------------
 # Logout Route
@@ -1179,8 +1192,14 @@ def dashboard():
         # Retrieve query parameters
         success_message = request.args.get('quickbooks_login_success')
         chat_session_id = request.args.get('chatSessionId')  # Include chatSessionId if provided
-        token = request.cookies.get('session_token')
 
+        # Log chatSessionId if available
+        if chat_session_id:
+            logging.info(f"Dashboard accessed with chatSessionId: {chat_session_id}")
+        else:
+            logging.info("Dashboard accessed without a chatSessionId.")
+
+        token = request.cookies.get('session_token')
         if not token:
             logging.info("No session_token found. QuickBooks disconnected.")
             return render_template(
@@ -1233,6 +1252,7 @@ def dashboard():
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
+
 
 
 # ------------------------------------------

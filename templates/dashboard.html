@@ -121,9 +121,15 @@
             {% if quickbooks_login_needed %}
                 <div class="quickbooks-login-prompt">
                     <p>You need to log in with QuickBooks to access your data.</p>
-                    <a href="{{ url_for('quickbooks_login') }}" class="button">Log in with QuickBooks</a>
-            </div>
+                    <a 
+                        id="quickbooks-login-button" 
+                        href="/quickbooks-login?chatSessionId={{ chatSessionId }}" 
+                        class="button">
+                        Log in with QuickBooks
+                    </a>
+                </div>
             {% endif %}
+
 
 
             <!-- Display Success Message -->
@@ -203,6 +209,17 @@
         // Run connection checks on load
         checkQuickBooks();
         checkOpenAI();
+
+        // Dynamically update the QuickBooks login button with chatSessionId
+        document.addEventListener('DOMContentLoaded', function () {
+            const button = document.getElementById('quickbooks-login-button');
+            const urlParams = new URLSearchParams(window.location.search);
+            const chatSessionId = urlParams.get('chatSessionId');
+
+            if (chatSessionId) {
+                button.href = `/quickbooks-login?chatSessionId=${encodeURIComponent(chatSessionId)}`;
+            }
+        });
     </script>
 </body>
 </html>
