@@ -134,8 +134,9 @@
 
             <!-- Display Success Message -->
             {% if success_message %}
-                <div class="message success-message">
+                <div id="qb-success-banner" class="message success-message">
                     <p>QuickBooks authorization successful!</p>
+                    <button id="qb-success-close" style="margin-left: 20px;">×</button>
                 </div>
             {% endif %}
 
@@ -178,18 +179,22 @@
         async function checkQuickBooks() {
             try {
                 const response = await fetch('/business-info');
-                const result = await response.json();
                 if (response.ok) {
+                    // success
                     document.getElementById('quickbooks-status').innerText = 'Connected';
+                    document.getElementById('quickbooks-login-button').style.display = 'none';
                 } else {
+                    // failure
                     document.getElementById('quickbooks-status').innerText = 'Disconnected';
                     document.getElementById('quickbooks-login-button').style.display = 'inline-block';
                 }
             } catch {
+                // network or other error
                 document.getElementById('quickbooks-status').innerText = 'Disconnected';
                 document.getElementById('quickbooks-login-button').style.display = 'inline-block';
             }
         }
+        
 
         // Check OpenAI connection status
         async function checkOpenAI() {
@@ -220,6 +225,20 @@
                 button.href = `/quickbooks-login?chatSessionId=${encodeURIComponent(chatSessionId)}`;
             }
         });
+
+        // Authorisation Success Closable Banner
+        document.addEventListener('DOMContentLoaded', function () {
+            const closeBtn = document.getElementById('qb-success-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    const banner = document.getElementById('qb-success-banner');
+                    if (banner) {
+                        banner.style.display = 'none';
+                    }
+                });
+            }
+        });
+
     </script>
 </body>
 </html>

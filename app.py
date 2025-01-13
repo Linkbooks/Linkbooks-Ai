@@ -1480,9 +1480,9 @@ def business_info():
 
         # -- Finally, call your get_company_info with realm_id + access_token or user_id --
         # e.g. if get_company_info can be realm-based:
-        company_info = get_company_info(realm_id, access_token)
+        company_info = get_company_info(user_id)
 
-        # Return the relevant fields
+        # Return the relevant data
         return jsonify({
             "companyName": company_info.get("CompanyName"),
             "legalName": company_info.get("LegalName"),
