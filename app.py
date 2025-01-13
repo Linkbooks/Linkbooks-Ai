@@ -486,76 +486,63 @@ def fetch_report(
 ) -> dict:
     """
     Fetches a financial report from QuickBooks for the specified user_id.
-
-    :param user_id: The Supabase user ID (bd9392db-...) of the user whose QBO tokens we need.
-    :param report_type: Type of report (e.g. "ProfitAndLoss", "BalanceSheet").
-    :param start_date: Optional. Start date string in YYYY-MM-DD format.
-    :param end_date: Optional. End date string in YYYY-MM-DD format.
-    :return: Report data as JSON (dict).
+    This function:
+      1) Retrieves the user’s QBO tokens from Supabase,
+      2) Checks for expiry, refreshes if needed,
+      3) Calls the QuickBooks /reports endpoint,
+      4) Returns the JSON response or raises an Exception.
     """
-    # -------------------------
-    # 1) Retrieve the user’s QBO tokens using your existing helper
-    # -------------------------
-    tokens = get_quickbooks_tokens(user_id)  # from your new code
+    # 1) Retrieve tokens from DB
+    tokens = get_quickbooks_tokens(user_id)
     access_token = tokens.get("access_token")
-    realm_id = tokens.get("realm_id")
-    expiry_str = tokens.get("token_expiry")
+    realm_id     = tokens.get("realm_id")
+    expiry_str   = tokens.get("token_expiry")
 
     if not access_token or not realm_id:
         raise Exception("Missing QuickBooks tokens or realm_id for this user.")
 
-    # -------------------------
-    # 2) Check for expiry and refresh if needed
-    # -------------------------
+    # 2) Check if expired
     if expiry_str:
         expiry_dt = datetime.fromisoformat(expiry_str)
         if datetime.utcnow() > expiry_dt:
-            logging.info("Access token expired, refreshing tokens...")
-            refresh_access_token(user_id)  # from your new code
-            # Grab new tokens
+            logging.info("Access token expired; refreshing tokens...")
+            refresh_access_token(user_id)
+            # Now refetch the updated tokens
             tokens = get_quickbooks_tokens(user_id)
             access_token = tokens["access_token"]
-            realm_id = tokens["realm_id"]
+            realm_id     = tokens["realm_id"]
 
-    # -------------------------
-    # 3) Construct the request to QBO’s Reports endpoint
-    # -------------------------
+    # 3) Make the request to QuickBooks
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json"
     }
     base_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/{report_type}"
-    
-    # If you want to pass optional date parameters, do so as query params
+
     params = {}
     if start_date:
         params["start_date"] = start_date
     if end_date:
         params["end_date"] = end_date
 
-    # Make the initial request
     response = requests.get(base_url, headers=headers, params=params)
 
-    # -------------------------
-    # 4) Handle possible 401 (expired token mid-request)
-    # -------------------------
+    # 4) Handle possible 401 mid-request (token invalid again)
     if response.status_code == 401:
-        logging.info("Access token may have expired during request; refreshing again...")
+        logging.info("Token might have expired mid-request. Attempting second refresh...")
         refresh_access_token(user_id)
-        # Retry with new tokens
         tokens = get_quickbooks_tokens(user_id)
         access_token = tokens["access_token"]
         headers["Authorization"] = f"Bearer {access_token}"
         response = requests.get(base_url, headers=headers, params=params)
 
-    # -------------------------
-    # 5) Check final response
-    # -------------------------
+    # 5) Final check
     if response.status_code == 200:
         return response.json()
     else:
         logging.error(f"Error fetching {report_type} report: {response.text}")
         raise Exception(f"Failed to fetch {report_type} report: {response.status_code} {response.text}")
+
 
 
 # ------------------------------------------------------------------------------
@@ -1348,19 +1335,14 @@ def dashboard():
 @app.route('/fetch-reports', methods=['GET'])
 def fetch_reports_route():
     """
-    Fetches a QuickBooks report for a given chatSessionId or userId.
+    Fetches a QuickBooks report for a given chatSessionId or userId,
+    and delegates token handling + refresh logic to fetch_report().
     """
     try:
         chat_session_id = request.args.get('chatSessionId')
         session_token = request.cookies.get('session_token')
 
-        if not chat_session_id and not session_token:
-            logging.error("Missing chatSessionId and session token.")
-            return jsonify({"error": "chatSessionId or session token is required"}), 400
-
-        # ------------------------------------------------
-        # 1) Determine user_id from session token if we have one
-        # ------------------------------------------------
+        # 1) If we have a session token, decode user_id
         user_id = None
         if session_token:
             try:
@@ -1373,72 +1355,39 @@ def fetch_reports_route():
                 logging.error("Invalid session token.")
                 return jsonify({"error": "Invalid session token. Please log in again."}), 401
 
-        # ------------------------------------------------
-        # 2) Fetch tokens using chat_session_id or user_id
-        # ------------------------------------------------
-        if chat_session_id:
-            # If we have chat_session_id, fetch tokens by that
-            tokens_response = supabase.table("quickbooks_tokens").select("*").eq("chat_session_id", chat_session_id).execute()
-        elif user_id:
-            # Otherwise, fetch tokens by user_id
-            tokens_response = supabase.table("quickbooks_tokens").select("*").eq("user_id", user_id).execute()
-        else:
-            logging.error("No valid identifier for token retrieval.")
-            return jsonify({"error": "No valid identifier for token retrieval."}), 400
+        # 2) If no user_id from session_token, but we do have a chat_session_id,
+        #    look up the user_id in quickbooks_tokens or user_profiles
+        if not user_id and chat_session_id:
+            # This example: we fetch user_id from user_profiles or quickbooks_tokens
+            tokens_response = supabase.table("quickbooks_tokens").select("user_id").eq("chat_session_id", chat_session_id).execute()
+            if tokens_response.data:
+                user_id = tokens_response.data[0]["user_id"]
+            else:
+                # or check user_profiles if you prefer
+                # For instance:
+                # user_profile = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+                # if user_profile.data:
+                #     user_id = user_profile.data[0]["id"]
+                pass
 
-        if not tokens_response.data:
-            logging.error(f"No tokens found for identifier: chatSessionId={chat_session_id}, userId={user_id}")
-            return jsonify({"error": "No QuickBooks tokens found. Please log in again."}), 404
-
-        # Grab the tokens row. If we used chatSessionId but didn't have a user_id from session, pull user_id from the row
-        tokens = tokens_response.data[0]
         if not user_id:
-            user_id = tokens.get("user_id")  # ensure we have a user_id for potential refresh calls
+            logging.error("No user_id found via session token or chat_session_id.")
+            return jsonify({"error": "No user_id found. Please log in or link session."}), 401
 
-        access_token = tokens["access_token"]
-        refresh_token = tokens.get("refresh_token")
-        realm_id = tokens["realm_id"]
-        expiry = tokens["token_expiry"]
-
-        # ------------------------------------------------
-        # 3) Check for expired tokens, refresh if needed
-        # ------------------------------------------------
-        if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
-            logging.info("Access token expired. Attempting refresh...")
-            try:
-                # Here we call your user-based refresh function
-                # (assuming refresh_access_token expects user_id)
-                refresh_access_token(user_id)  
-                
-                # fetch updated tokens after refresh
-                updated = supabase.table("quickbooks_tokens").select("*").eq("user_id", user_id).execute()
-                if not updated.data:
-                    raise Exception("No tokens found even after refresh.")
-                new_tokens = updated.data[0]
-                access_token = new_tokens["access_token"]
-                realm_id = new_tokens["realm_id"]
-                logging.info("Tokens refreshed successfully.")
-            except Exception as e:
-                logging.error(f"Failed to refresh tokens: {e}")
-                return jsonify({"error": "Failed to refresh tokens. Please log in again."}), 401
-
-        # ------------------------------------------------
-        # 4) Fetch the QuickBooks report
-        # ------------------------------------------------
+        # 3) Extract the needed query parameters
         report_type = request.args.get("reportType")
         start_date = request.args.get("startDate")
         end_date = request.args.get("endDate")
 
-        # If you have a function named fetch_report, pass in user_id or the needed tokens
-        # For example, if your fetch_report uses realm_id + access_token:
+        # 4) Let fetch_report handle retrieval/refresh of tokens
         report_data = fetch_report(
-            realm_id=realm_id,
-            access_token=access_token,
+            user_id=user_id,
             report_type=report_type,
             start_date=start_date,
             end_date=end_date
         )
 
+        # 5) Return the resulting JSON
         return jsonify({
             "reportType": report_type,
             "data": report_data
@@ -1447,8 +1396,6 @@ def fetch_reports_route():
     except Exception as e:
         logging.error(f"Error in /fetch-reports: {e}")
         return jsonify({"error": str(e)}), 500
-
-
 
 
 # ------------------------------------------
