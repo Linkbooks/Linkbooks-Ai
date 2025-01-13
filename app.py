@@ -849,17 +849,13 @@ def logout():
         # Delete QuickBooks tokens
         supabase.table("quickbooks_tokens").delete().eq("user_id", user_id).execute()
 
-        # Delete ChatGPT tokens
-        chat_response = supabase.table("chatgpt_tokens").select("chat_session_id").eq("realm_id", user_id).execute()
-        if chat_response.data:
-            chat_session_id = chat_response.data[0]["chat_session_id"]
-            supabase.table("chatgpt_tokens").delete().eq("chat_session_id", chat_session_id).execute()
-
         logging.info("User logged out successfully.")
         return render_template("logout.html", message="You have been logged out successfully.")
+
     except Exception as e:
         logging.error(f"Error during logout: {e}")
         return render_template("logout.html", message="An error occurred during logout. Please try again.")
+
 
 
 # ------------------------------------------
