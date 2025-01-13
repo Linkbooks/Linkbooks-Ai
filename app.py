@@ -263,26 +263,32 @@ def get_quickbooks_tokens(user_id):
 
 def save_quickbooks_tokens(user_id, realm_id, access_token, refresh_token, token_expiry):
     """
-    Upsert QuickBooks tokens.
+    Upserts QuickBooks tokens for the single user row identified by user_id.
+    This ensures only ONE row per user in quickbooks_tokens.
     """
     try:
-        supabase.table("quickbooks_tokens").upsert({
-            "id": user_id,
-            "realm_id": realm_id,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_expiry": token_expiry,
-            "last_updated": datetime.utcnow().isoformat()
-        }).execute()
-        
-        logging.info("QuickBooks tokens saved successfully.")
+        # upsert with a dictionary where user_id is the same each time
+        response = supabase.table("quickbooks_tokens") \
+            .upsert({
+                "user_id": user_id,
+                "realm_id": realm_id,
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_expiry": token_expiry,
+                "last_updated": datetime.utcnow().isoformat()
+            }) \
+            .execute()
+
+        # Optionally check response.data or response.error
+        logging.info(f"QuickBooks tokens saved successfully for user_id={user_id}.")
     except Exception as e:
-        logging.error(f"Error saving QuickBooks tokens: {e}")
+        logging.error(f"Error saving QuickBooks tokens for user_id={user_id}: {e}")
         raise Exception("Failed to save QuickBooks tokens.")
+
 
 def refresh_access_token(user_id):
     """
-    Refreshes the QuickBooks access token for an app-based user.
+    Refreshes the QuickBooks access token for an app-based user (one row per user).
     """
     quickbooks_data = get_quickbooks_tokens(user_id)
     if not quickbooks_data:
@@ -295,10 +301,10 @@ def refresh_access_token(user_id):
 
     response = requests.post(TOKEN_URL, auth=auth_header, data=payload, headers=headers)
     if response.status_code == 200:
-        tokens = response.json()
-        new_access_token = tokens['access_token']
-        new_refresh_token = tokens.get('refresh_token', refresh_token)
-        new_expiry = (datetime.utcnow() + timedelta(seconds=tokens['expires_in'])).isoformat()
+        tokens_json = response.json()
+        new_access_token = tokens_json['access_token']
+        new_refresh_token = tokens_json.get('refresh_token', refresh_token)
+        new_expiry = (datetime.utcnow() + timedelta(seconds=tokens_json['expires_in'])).isoformat()
 
         save_quickbooks_tokens(
             user_id=user_id,
@@ -309,8 +315,9 @@ def refresh_access_token(user_id):
         )
         logging.info(f"Access token refreshed for user {user_id}.")
     else:
-        logging.error(f"Failed to refresh access token for user_id {user_id}: {response.text}")
+        logging.error(f"Failed to refresh access token for user_id={user_id}: {response.text}")
         raise Exception(response.text)
+
 
 def get_company_info(user_id):
     """
