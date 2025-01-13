@@ -871,6 +871,7 @@ def logout():
 # ------------------------------------------
 # ChatGPT-specific routes
 # ------------------------------------------
+
 @app.route('/oauth/start-for-chatgpt', methods=['GET'])
 def start_oauth_for_chatgpt():
     """
@@ -886,7 +887,12 @@ def start_oauth_for_chatgpt():
         user_check = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
         if not user_check.data:
             # Not linked? Redirect them to /login
-            middleware_login_url = f"https://quickbooks-gpt-app.onrender.com/login?chatSessionId={chat_session_id}"
+            # -- URL-encode the chatSessionId so that spaces or special chars are handled properly --
+            encoded_session_id = quote(chat_session_id, safe="")
+
+            middleware_login_url = (
+                f"https://quickbooks-gpt-app.onrender.com/login?chatSessionId={encoded_session_id}"
+            )
             logging.info(f"ChatGPT session not linked. Redirecting to login: {middleware_login_url}")
             return jsonify({"loginUrl": middleware_login_url}), 200
 
@@ -922,6 +928,7 @@ def start_oauth_for_chatgpt():
     except Exception as e:
         logging.error(f"Error in start_oauth_for_chatgpt: {e}", exc_info=True)
         return jsonify({"error": "An error occurred while processing the OAuth flow. Please try again later."}), 500
+
 
 
 @app.route('/link-chat-session', methods=['GET'])
