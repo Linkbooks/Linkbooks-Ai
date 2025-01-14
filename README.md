@@ -1,8 +1,8 @@
-# QuickBooks GPT Middleware
+# Linkbooks Ai
 
 ## Overview
 
-**QuickBooks GPT Middleware** is a Flask-based application that acts as a bridge between OpenAI's API and QuickBooks, enabling advanced business data analysis through AI. Hosted on Render, this middleware provides endpoints to fetch and analyze financial data, making it accessible to OpenAI integrations or other API clients.
+**Linkbooks Ai** is a Flask-based application that acts as a bridge between OpenAI's API and QuickBooks, enabling advanced business data analysis through AI. Hosted on Render, this middleware provides endpoints to fetch and analyze financial data, making it accessible to OpenAI integrations or other API clients.
 
 ---
 
@@ -22,7 +22,7 @@
 
 The middleware is hosted on Render and accessible at:
 
-- **Base URL**: [https://quickbooks-gpt-app.onrender.com](https://quickbooks-gpt-app.onrender.com)
+- **Base URL**: [https://linkbooksai.com](https://linkbooksai.com)
 
 ---
 
@@ -105,7 +105,7 @@ The application exposes the following key endpoints for API clients or tools lik
 
 ### Render Hosting:
 The middleware is hosted on Render for seamless online access.
-- **Base URL**: [https://quickbooks-gpt-app.onrender.com](https://quickbooks-gpt-app.onrender.com)
+- **Base URL**: [https://linkbooksai.com](https://linkbooksai.com)
 
 ### GitHub Integration:
 - Any updates to the middleware code are pushed to the GitHub repository.
@@ -207,7 +207,7 @@ info:
   description: Simplified API for accessing and analyzing QuickBooks data.
   version: 1.0.0
 servers:
-  - url: https://quickbooks-gpt-app.onrender.com
+  - url: https://linkbooksai.com
 paths:
   /business-info:
     get:

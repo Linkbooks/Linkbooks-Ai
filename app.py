@@ -154,7 +154,7 @@ SCOPE = "com.intuit.quickbooks.accounting"
 logging.info(f"Using REDIRECT_URI: {REDIRECT_URI}")
 assert REDIRECT_URI in [
     "http://localhost:5000/callback",
-    "https://quickbooks-gpt-app.onrender.com/callback",
+    "https://linkbooksai.com/callback",
 ], f"Mismatch in REDIRECT_URI configuration. Current: {REDIRECT_URI}"
 
 # ------------------------------------------------------------------------------
@@ -881,7 +881,7 @@ def start_oauth_for_chatgpt():
             encoded_session_id = quote(chat_session_id, safe="")
 
             middleware_login_url = (
-                f"https://quickbooks-gpt-app.onrender.com/login?chatSessionId={encoded_session_id}"
+                f"https://linkbooksai.com/login?chatSessionId={encoded_session_id}"
             )
             logging.info(f"ChatGPT session not linked. Redirecting to login: {middleware_login_url}")
             return jsonify({"loginUrl": middleware_login_url}), 200
