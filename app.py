@@ -14,6 +14,7 @@ from gotrue.errors import AuthApiError  # Correct import for error handling
 from bcrypt import checkpw
 from openai import OpenAI
 import jwt
+import stripe
 from functools import wraps
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -481,6 +482,52 @@ def generate_new_state(chat_session_id):
         logging.error(f"Error generating new state for chatSessionId {chat_session_id}: {e}", exc_info=True)
         raise Exception("Failed to generate and store OAuth state.")
     
+#--------------------------------------------------
+#                 Subscription Helper/Defs        #
+#--------------------------------------------------
+
+## Typically in a config file or environment variable
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
+
+def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=False, chat_session_id=None):
+    # Map subscription plans to Stripe Price IDs
+    price_map = {
+        "monthly": "price_123_monthly",  
+        "monthly_3mo_discount": "price_ABC_3monthdiscount",
+        "annual": "price_456_annual",
+        "annual_3mo_discount": "price_DEF_3monthannual"
+    }
+
+    price_id = price_map.get(subscription_plan)
+    if not price_id:
+        raise ValueError("Invalid subscription plan selected")
+
+    trial_period_days = 7 if (free_week and subscription_plan.startswith("monthly")) else 0
+
+    # Build success and cancel URLs with optional chat_session_id
+    base_success_url = "https://linkbooksai.com/payment-success"
+    base_cancel_url = "https://linkbooksai.com/payment-cancel"
+    success_url = f"{base_success_url}?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = base_cancel_url
+
+    if chat_session_id:
+        success_url += f"&chat_session_id={chat_session_id}"
+        cancel_url += f"?chat_session_id={chat_session_id}"
+
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        mode="subscription",
+        line_items=[{"price": price_id, "quantity": 1}],
+        customer_email=email,
+        subscription_data={"trial_period_days": trial_period_days},
+        success_url=success_url,
+        cancel_url=cancel_url,
+    )
+
+    return session.url
+
+
+
     # -------------------------
     # App Requests functions/definitions
     # -------------------------#
@@ -654,95 +701,102 @@ def login():
 # ------------------------------------------
 # Create Account Routes
 # ------------------------------------------
-@app.route('/create-account', methods=['GET'])
-def create_account_form():
-    return render_template('create_account.html')
-
-@app.route('/create-account', methods=['POST'])
+@app.route('/create-account', methods=['GET', 'POST'])
 def create_account():
-    data = request.form
-    name = data.get('name', '').strip()
-    email = data.get('email', '').strip().lower()
-    password = data.get('password')
-    confirm_password = data.get('confirm_password')
-    phone = data.get('phone', '').strip()
-    address = data.get('address', '').strip()
+    if request.method == 'GET':
+        # Render the Create Account page, passing chat_session_id
+        chat_session_id = request.args.get('chat_session_id', None)
+        return render_template('create_account.html', chat_session_id=chat_session_id)
 
-    if not email or not password or not confirm_password:
-        error_message = "Email and passwords are required."
-        return jsonify({"success": False, "error_message": error_message}), 400
+    elif request.method == 'POST':
+        # Handle form submission
+        data = request.form
+        chat_session_id = data.get('chat_session_id', None)  # Preserve chat_session_id
 
-    if password != confirm_password:
-        error_message = "Passwords do not match."
-        return jsonify({"success": False, "error_message": error_message}), 400
+        name = data.get('name', '').strip()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password')
+        confirm_password = data.get('confirm_password')
+        phone = data.get('phone', '').strip()
+        address = data.get('address', '').strip()
 
-    if len(password) < 6:
-        error_message = "Password must be at least 6 characters long."
-        return jsonify({"success": False, "error_message": error_message}), 400
+        if not email or not password or not confirm_password:
+            return jsonify({"success": False, "error_message": "Email and passwords are required."}), 400
 
-    # Check if user already exists
-    try:
-        response = supabase.table("users").select("id").eq("email", email).execute()
-        if response.data:
-            error_message = "An account with this email already exists."
-            return jsonify({"success": False, "error_message": error_message}), 400
-    except Exception as e:
-        logging.error(f"Error checking for existing account: {e}")
-        error_message = "Failed to check for an existing account."
-        return jsonify({"success": False, "error_message": error_message}), 500
+        if password != confirm_password:
+            return jsonify({"success": False, "error_message": "Passwords do not match."}), 400
 
-    # Create user in Supabase Auth
-    try:
-        auth_response = supabase.auth.sign_up({"email": email, "password": password})
-        logging.info(f"Auth response: {auth_response}")
+        if len(password) < 6:
+            return jsonify({"success": False, "error_message": "Password must be at least 6 characters long."}), 400
 
-        if hasattr(auth_response, 'user') and auth_response.user:
-            user_id = auth_response.user.id
-            logging.info(f"User created in Supabase Auth with ID: {user_id}")
-        else:
-            error_message = "Failed to create user in authentication system."
-            return jsonify({"success": False, "error_message": error_message}), 400
-    except AuthApiError as e:
-        logging.error(f"AuthApiError during sign_up: {e}", exc_info=True)
-        error_msg = str(e).lower()
-        if 'password should be at least 6 characters' in error_msg:
-            error_message = "Password must be at least 6 characters long."
-        elif 'user already registered' in error_msg:
-            error_message = "An account with that email already exists."
-        elif 'rate limit' in error_msg:
-            error_message = "You have reached the maximum number of sign-up attempts. Please try again later."
-            return jsonify({"success": False, "error_message": error_message}), 429
-        else:
-            error_message = "An error occurred during account creation."
-        return jsonify({"success": False, "error_message": error_message}), 400
-    except Exception as e:
-        logging.error(f"Exception during sign_up: {e}", exc_info=True)
-        error_message = "An unexpected error occurred during account creation."
-        return jsonify({"success": False, "error_message": error_message}), 500
+        # Check if user already exists
+        try:
+            response = supabase.table("users").select("id").eq("email", email).execute()
+            if response.data:
+                return jsonify({"success": False, "error_message": "An account with this email already exists."}), 400
+        except Exception as e:
+            logging.error(f"Error checking for existing account: {e}")
+            return jsonify({"success": False, "error_message": "Failed to check for an existing account."}), 500
 
-    # Insert user profile
-    try:
-        user_profile = {
-            "id": user_id,
-            "name": name,
-            "phone": phone,
-            "address": address,
-            "gpt_config": {"default_behavior": "friendly"},
-            "is_verified": False
-        }
-        supabase.table("user_profiles").insert(user_profile).execute()
-        logging.info(f"User profile created for ID: {user_id}")
-    except Exception as e:
-        logging.error(f"Error inserting user profile: {e}")
-        error_message = "Failed to save user profile."
-        return jsonify({"success": False, "error_message": error_message}), 500
+        # Create user in Supabase Auth
+        try:
+            auth_response = supabase.auth.sign_up({"email": email, "password": password})
+            user_id = auth_response.user.id if auth_response.user else None
+            if not user_id:
+                raise Exception("Failed to create user in Supabase Auth.")
+        except Exception as e:
+            logging.error(f"Auth creation failed: {e}")
+            return jsonify({"success": False, "error_message": "Error creating account."}), 500
 
-    success_message = "Account created successfully! A verification email has been sent."
-    return jsonify({"success": True, "success_message": success_message}), 200
+        # Insert user profile
+        try:
+            user_profile = {
+                "id": user_id,
+                "name": name,
+                "phone": phone,
+                "address": address,
+                "gpt_config": {"default_behavior": "friendly"},
+                "is_verified": False,
+                "chat_session_id": chat_session_id,  # Save chat_session_id for context
+            }
+            supabase.table("user_profiles").insert(user_profile).execute()
+        except Exception as e:
+            logging.error(f"Error inserting user profile: {e}")
+            return jsonify({"success": False, "error_message": "Failed to save user profile."}), 500
+
+        return jsonify({"success": True, "success_message": "Account created successfully!"}), 200
+
 
 @app.route('/confirmation')
 def confirmation():
     return render_template('confirmation.html')
+
+
+@app.route('/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+    endpoint_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, endpoint_secret
+        )
+    except ValueError:
+        # Invalid payload
+        return "Invalid payload", 400
+    except stripe.error.SignatureVerificationError:
+        # Invalid signature
+        return "Invalid signature", 400
+
+    # Handle subscription/payment events
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        # retrieve the subscription or customer ID from session
+        # update user_profiles.subscription_status = 'active'
+    
+    return "", 200
+
 
 # ------------------------------------------
 # Protected Example: fetch-user-data

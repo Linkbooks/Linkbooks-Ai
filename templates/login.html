@@ -43,7 +43,10 @@
                 <a href="/forgot-password" class="link">Forgot Password?</a>
             </div>
 
-            <p class="form-note">Don't have an account? <a href="/create-account" class="link">Create one</a></p>
+            <<p class="form-note">
+                Don't have an account? 
+                <a href="/create-account?chat_session_id={{ request.args.get('chat_session_id', '') }}" class="link">Create one</a>
+            </p>            
         </div>
     </main>
 
