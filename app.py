@@ -492,10 +492,10 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=False, chat_session_id=None):
     # Map subscription plans to Stripe Price IDs
     price_map = {
-        "monthly": "price_123_monthly",
-        "monthly_3mo_discount": "price_ABC_3monthdiscount",
-        "annual": "price_456_annual",
-        "annual_3mo_discount": "price_DEF_3monthannual"
+        "monthly_no_offer": "prod_Raj8QLNSWRe1wh",
+        "monthly_3mo_discount": "prod_RajCfiC1htqESQ",
+        "annual_free_week": "prod_RajEnG8s4m67Lz",
+        "annual_further_discount": "prod_RajGaTaWhFnLNl"
     }
 
     price_id = price_map.get(subscription_plan)
@@ -540,6 +540,33 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=
 
     return session.url
 
+
+# Step 1: Create the initial subscription with 3 months discount
+def create_discounted_subscription(customer_id, email):
+    # Create the subscription with the 3-month discount plan
+    subscription = stripe.Subscription.create(
+        customer=customer_id,
+        items=[{"price": "prod_RajCfiC1htqESQ"}],  # £15 Price ID
+        billing_cycle_anchor="now",
+        expand=["latest_invoice.payment_intent"],
+    )
+
+    # Step 2: Schedule the transition to £10/month plan after 3 months
+    stripe.Subscription.update(
+        subscription.id,
+        phases=[
+            {
+                "items": [{"price": "price_3month_discount"}],  # £15 for 3 months
+                "start_date": int(time.time()),
+                "end_date": int(time.time()) + (3 * 30 * 24 * 60 * 60),  # Approx. 3 months
+            },
+            {
+                "items": [{"price": "prod_Raj8QLNSWRe1wh"}],  # £10/month Price ID
+            },
+        ],
+    )
+
+    return subscription
 
 
 
@@ -784,9 +811,10 @@ def create_account():
 
         return jsonify({"success": True, "success_message": "Account created successfully!"}), 200
     
+#------------- Create Stripe Session ---------------#
     
 @app.route('/create-stripe-session', methods=['POST'])
-def create_stripe_session_route():
+def create_stripe_session():
     data = request.get_json()
     email = data.get('email')
     chat_session_id = data.get('chat_session_id')
@@ -806,14 +834,6 @@ def create_stripe_session_route():
         return jsonify({"error": str(e)}), 500
 
 
-
-
-
-@app.route('/confirmation')
-def confirmation():
-    return render_template('confirmation.html')
-
-
 @app.route('/stripe-webhook', methods=['POST'])
 def stripe_webhook():
     payload = request.get_data(as_text=True)
@@ -821,9 +841,7 @@ def stripe_webhook():
     endpoint_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, endpoint_secret
-        )
+        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except ValueError:
         # Invalid payload
         return "Invalid payload", 400
@@ -831,46 +849,95 @@ def stripe_webhook():
         # Invalid signature
         return "Invalid signature", 400
 
+    # Handle 'checkout.session.completed' event
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         email = session.get("customer_email")
         subscription_plan = session.get("metadata", {}).get("subscription_plan")
         chat_session_id = session.get("metadata", {}).get("chat_session_id")
+        customer_id = session.get("customer")  # Get Stripe customer ID
 
-        # Create the user in Supabase Auth
-        try:
-            auth_response = supabase.auth.sign_up({"email": email, "password": "generated_password"})
-            user_id = auth_response.user.id if auth_response.user else None
-            if not user_id:
-                raise Exception("Failed to create user in Supabase Auth.")
-        except Exception as e:
-            logging.error(f"Auth creation failed for {email}: {e}")
-            return "Error creating user in Supabase Auth", 500
-
-        # Insert user profile
         try:
             user_profile = {
-                "id": user_id,
                 "email": email,
-                "subscription_status": "active",
+                "subscription_status": "active",  # Start as active since the session completed
                 "subscription_plan": subscription_plan,
                 "chat_session_id": chat_session_id,
-                "is_verified": False,
+                "customer_id": customer_id,  # Save the Stripe customer ID
             }
-            supabase.table("user_profiles").insert(user_profile).execute()
+
+            # Use transaction to ensure atomicity
+            try:
+                with supabase.transaction() as txn:
+                    supabase.table("user_profiles").upsert(user_profile, transaction=txn)
+                    txn.commit()
+            except Exception as e:
+                logging.error(f"Transaction failed: {e}")
+                txn.rollback()
+                raise
+
+            # Send verification email
+            try:
+                supabase.auth.api.send_magic_link(email)
+            except Exception as e:
+                logging.error(f"Error sending verification email to {email}: {e}")
+                return "Error sending verification email", 500
+
         except Exception as e:
-            logging.error(f"Error inserting user profile for {email}: {e}")
+            logging.error(f"Error creating or updating user profile for {email}: {e}")
             return "Error saving user profile", 500
 
-        # Send verification email
+    # Handle 'invoice.payment_succeeded' event
+    elif event["type"] == "invoice.payment_succeeded":
+        invoice = event["data"]["object"]
+        customer_id = invoice['customer']
+
         try:
-            supabase.auth.api.send_magic_link(email)
+            with supabase.transaction() as txn:
+                user_profile = supabase.table("user_profiles").select("*").eq("customer_id", customer_id).execute()
+                if not user_profile.data:
+                    logging.error(f"No user found for customer_id {customer_id}. Cannot update subscription status.")
+                    raise Exception("User not found")
+
+                supabase.table("user_profiles").update({"subscription_status": "active"}, transaction=txn).eq("customer_id", customer_id).execute()
+                txn.commit()
+
         except Exception as e:
-            logging.error(f"Error sending verification email to {email}: {e}")
-            return "Error sending verification email", 500
+            logging.error(f"Error updating subscription status for customer {customer_id}: {e}")
+            txn.rollback()
+            return "Error updating subscription status", 500
+
+    # Handle 'customer.subscription.updated' event
+    elif event["type"] == "customer.subscription.updated":
+        subscription = event["data"]["object"]
+        customer_id = subscription['customer']
+        status = subscription['status']  # Example: 'active', 'canceled', 'past_due'
+
+        try:
+            with supabase.transaction() as txn:
+                user_profile = supabase.table("user_profiles").select("*").eq("customer_id", customer_id).execute()
+                if not user_profile.data:
+                    logging.error(f"No user found for customer_id {customer_id}. Cannot update subscription status.")
+                    raise Exception("User not found")
+
+                supabase.table("user_profiles").update({"subscription_status": status}, transaction=txn).eq("customer_id", customer_id).execute()
+                txn.commit()
+
+        except Exception as e:
+            logging.error(f"Error updating subscription status for customer {customer_id}: {e}")
+            txn.rollback()
+            return "Error updating subscription status", 500
+
+    # Return 200 for unhandled or irrelevant events
+    else:
+        logging.info(f"Unhandled event type: {event['type']}")
 
     return "", 200
 
+
+@app.route('/confirmation')
+def confirmation():
+    return render_template('confirmation.html')
 
 
 # ------------------------------------------
