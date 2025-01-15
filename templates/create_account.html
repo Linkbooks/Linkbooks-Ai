@@ -230,88 +230,101 @@
         </div>
 
         <!-- Subscription Options -->
-        <div class="input-group">
-          <label for="subscription">Choose a Plan & Offer:</label>
-
-          <div id="subscription-options" class="subscription-options">
-            <!-- MONTHLY PLAN -->
-            <div class="plan-box" data-plan="monthly">
-              <h3>Monthly Plan</h3>
-              <p class="price">£10/month</p>
-              <div class="offers-section">
-                <p><strong>Offers Included:</strong></p>
-                <div>
-                  <label
-                    ><input
-                      type="radio"
-                      name="offer"
-                      value="monthly_free_week"
-                      required
-                    />
-                    First Week Free</label
-                  ><br />
-                  <label
-                    ><input
-                      type="radio"
-                      name="offer"
-                      value="monthly_3month_discount"
-                    />
-                    3-Month Discount (£XX total for first 3 months)</label
-                  >
-                </div>
-              </div>
-              <!-- Plan Details Section (collapsible) -->
-              <div class="plan-details" id="monthly-details">
-                <p class="tc-content">
-                  <strong>Monthly Plan Terms:</strong> Lorem ipsum dolor sit
-                  amet, consectetur adipiscing elit. <em>[Placeholder text for 
-                  additional plan details or disclaimers]</em> 
-                </p>
-                <p class="tc-content">
-                  <strong>Additional Info:</strong> Quisque fermentum, quam 
-                  venenatis ornare vulputate, dui eros aliquet leo, sit amet
-                  ultricies lorem nisi in urna.
-                </p>
-                <a class="tc-link" href="#">Read Terms and Conditions</a>
+        <div id="subscription-options" class="subscription-options">
+          <!-- MONTHLY PLAN -->
+          <div class="plan-box" data-plan="monthly">
+            <h3>Monthly Plan</h3>
+            <p class="price">£10/month</p>
+            <div class="offers-section">
+              <p><strong>Offers Included:</strong></p>
+              <div>
+                <label>
+                  <input
+                    type="radio"
+                    name="offer"
+                    value="monthly_3month_discount"
+                    required
+                  />
+                  £5/month for 3 months (£15 upfront for the first 3 months)
+                </label>
+                <br />
+                <label>
+                  <input
+                    type="radio"
+                    name="offer"
+                    value="monthly_no_offer"
+                    required
+                  />
+                  No offer: £10/month, cancel anytime
+                </label>
               </div>
             </div>
-
-            <!-- ANNUAL PLAN -->
-            <div class="plan-box" data-plan="annual">
-              <h3>Annual Plan</h3>
-              <p class="price">£5/month (billed £60/year)</p>
-              <div class="offers-section">
-                <p><strong>Offers Included:</strong></p>
-                <div>
-                  <label
-                    ><input
-                      type="radio"
-                      name="offer"
-                      value="annual_3month_discount"
-                      required
-                    />
-                    3-Month Discount (£XX total for first year)</label
-                  >
-                </div>
+            <!-- Plan Details Section (collapsible) -->
+            <div class="plan-details" id="monthly-details">
+              <p class="tc-content">
+                <strong>Monthly Plan Terms:</strong>
+                <br />
+                If you select the £5/month for 3 months offer, you will pay £15 upfront for the first 3 months. After that, your subscription will renew at £10/month unless cancelled. This plan requires a minimum commitment of 3 months due to the discounted upfront payment.
+                <br />
+                If you select the "No Offer" option, you will pay £10/month and can cancel anytime.
+              </p>
+              <p class="tc-content">
+                <strong>Cancellation Policy:</strong>
+                <br />
+                You can cancel your subscription anytime. For the 3-month offer, cancellations apply after the 3-month period.
+              </p>
+              <a class="tc-link" href="#">Read Terms and Conditions</a>
+            </div>
+          </div>
+        
+          <!-- ANNUAL PLAN -->
+          <div class="plan-box" data-plan="annual">
+            <h3>Annual Plan</h3>
+            <p class="price">£5/month (billed £60/year)</p>
+            <div class="offers-section">
+              <p><strong>Offers Included:</strong></p>
+              <div>
+                <label>
+                  <input
+                    type="radio"
+                    name="offer"
+                    value="annual_free_week"
+                    required
+                  />
+                  Free Week: Try for 7 days, then pay £60/year
+                </label>
+                <br />
+                <label>
+                  <input
+                    type="radio"
+                    name="offer"
+                    value="annual_discount_no_free_week"
+                    required
+                  />
+                  Further Discount: £55/year (Save an extra £5 if you choose to pay upfront)
+                </label>
               </div>
-              <!-- Plan Details Section (collapsible) -->
-              <div class="plan-details" id="annual-details">
-                <p class="tc-content">
-                  <strong>Annual Plan Terms:</strong> Lorem ipsum dolor sit
-                  amet, consectetur adipiscing elit. <em>[Placeholder text for 
-                  additional annual plan details or disclaimers]</em> 
-                </p>
-                <p class="tc-content">
-                  <strong>Additional Info:</strong> Nullam scelerisque, nunc
-                  eget varius egestas, sapien risus dictum ipsum, at tincidunt
-                  diam eros nec odio.
-                </p>
-                <a class="tc-link" href="#">Read Terms and Conditions</a>
-              </div>
+            </div>
+            <!-- Plan Details Section (collapsible) -->
+            <div class="plan-details" id="annual-details">
+              <p class="tc-content">
+                <strong>Annual Plan Terms:</strong>
+                <br />
+                If you select the Free Week offer, your subscription includes a 7-day free trial. After the trial, you will be billed £60 for the year. You can cancel during the free week to avoid charges.
+                <br />
+                If you select the Further Discount option, you will pay £55 upfront for the year (an additional £5 discount). This plan does not include a free week but offers immediate savings.
+              </p>
+              <p class="tc-content">
+                <strong>Cancellation Policy:</strong>
+                <br />
+                You can cancel your subscription anytime. For the Free Week offer, cancellations must occur before the trial period ends to avoid charges. For the Further Discount option, the upfront payment is non-refundable.
+              </p>
+              <a class="tc-link" href="#">Read Terms and Conditions</a>
             </div>
           </div>
         </div>
-
+        
+          
         <button type="submit" class="button" aria-label="Create Account">
           Create Account
         </button>
