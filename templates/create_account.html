@@ -365,33 +365,38 @@
   <!-- JavaScript for Enhanced Functionality -->
   <script>
     document.addEventListener("DOMContentLoaded", function () {
-      // 1. Handle offer selection and dynamic content display
+      // Handle offer selection and dynamic content display
       const planBoxes = document.querySelectorAll(".plan-box");
-    
+  
       planBoxes.forEach((box) => {
         const radioButtons = box.querySelectorAll('input[type="radio"]');
         const detailsSections = box.querySelectorAll(".plan-details");
-    
+  
         // Hide all details by default
-        detailsSections.forEach((details) => details.classList.remove("expanded"));
-    
+        detailsSections.forEach((details) => {
+          details.style.maxHeight = "0";
+          details.classList.remove("expanded");
+        });
+  
         radioButtons.forEach((radio) => {
           radio.addEventListener("change", () => {
             // Hide all details within the current box
-            detailsSections.forEach((details) => details.classList.remove("expanded"));
-    
+            detailsSections.forEach((details) => {
+              details.style.maxHeight = "0";
+              details.classList.remove("expanded");
+            });
+  
             // Find and show the corresponding details
             const relatedDetails = box.querySelector(`#${radio.value}-details`);
             if (relatedDetails) {
               relatedDetails.classList.add("expanded");
-              // Adjust the max-height to accommodate the content inside
               relatedDetails.style.maxHeight = relatedDetails.scrollHeight + "px";
             }
           });
         });
       });
     
-      // 2. Handle Form Submission with AJAX (unchanged)
+      // Handle Form Submission with AJAX (unchanged)
       const form = document.getElementById("create-account-form");
       const submitButton = form.querySelector("button[type='submit']");
       const spinner = document.getElementById("loading-spinner");
@@ -465,6 +470,7 @@
           });
       });
     });
+    
     
   </script>  
 </body>
