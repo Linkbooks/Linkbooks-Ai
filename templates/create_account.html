@@ -367,28 +367,30 @@
     document.addEventListener("DOMContentLoaded", function () {
       // 1. Handle offer selection and dynamic content display
       const planBoxes = document.querySelectorAll(".plan-box");
-  
+    
       planBoxes.forEach((box) => {
         const radioButtons = box.querySelectorAll('input[type="radio"]');
         const detailsSections = box.querySelectorAll(".plan-details");
-  
+    
         // Hide all details by default
         detailsSections.forEach((details) => details.classList.remove("expanded"));
-  
+    
         radioButtons.forEach((radio) => {
           radio.addEventListener("change", () => {
             // Hide all details within the current box
             detailsSections.forEach((details) => details.classList.remove("expanded"));
-  
+    
             // Find and show the corresponding details
             const relatedDetails = box.querySelector(`#${radio.value}-details`);
             if (relatedDetails) {
               relatedDetails.classList.add("expanded");
+              // Adjust the max-height to accommodate the content inside
+              relatedDetails.style.maxHeight = relatedDetails.scrollHeight + "px";
             }
           });
         });
       });
-  
+    
       // 2. Handle Form Submission with AJAX (unchanged)
       const form = document.getElementById("create-account-form");
       const submitButton = form.querySelector("button[type='submit']");
@@ -396,23 +398,23 @@
       const errorMessageDiv = document.getElementById("error-message");
       const errorText = document.getElementById("error-text");
       const successMessageDiv = document.getElementById("success-message");
-  
+    
       form.addEventListener("submit", function (e) {
         e.preventDefault(); // Prevent default form submission
-  
+    
         // Clear previous messages
         errorMessageDiv.classList.add("hidden");
         errorText.textContent = "";
         successMessageDiv.classList.add("hidden");
-  
+    
         // Show loading spinner and disable submit button
         submitButton.disabled = true;
         spinner.classList.remove("hidden");
         form.classList.add("processing"); // Optional: style for processing
-  
+    
         // Gather form data
         const formData = new FormData(form);
-  
+    
         // Send AJAX request
         fetch("/create-account", {
           method: "POST",
@@ -431,7 +433,7 @@
             spinner.classList.add("hidden");
             submitButton.disabled = false;
             form.classList.remove("processing");
-  
+    
             if (data.success) {
               // Hide the form and show the success message
               form.classList.add("hidden");
@@ -449,7 +451,7 @@
             spinner.classList.add("hidden");
             submitButton.disabled = false;
             form.classList.remove("processing");
-  
+    
             // Show error message
             if (error && error.error_message) {
               errorMessageDiv.classList.remove("hidden");
@@ -463,6 +465,7 @@
           });
       });
     });
+    
   </script>  
 </body>
 </html>
