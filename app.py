@@ -507,9 +507,12 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=
     # Build success and cancel URLs with optional chat_session_id
     base_success_url = "https://linkbooksai.com/payment-success"
     base_cancel_url = "https://linkbooksai.com/payment-cancel"
+
+    # Add session_id to success URL
     success_url = f"{base_success_url}?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = base_cancel_url
 
+    # If chat_session_id exists, append it to the URLs
     if chat_session_id:
         success_url += f"&chat_session_id={chat_session_id}"
         cancel_url += f"?chat_session_id={chat_session_id}"
