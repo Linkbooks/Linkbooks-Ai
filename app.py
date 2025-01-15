@@ -492,10 +492,10 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=False, chat_session_id=None):
     # Map subscription plans to Stripe Price IDs
     price_map = {
-        "monthly_no_offer": "prod_Raj8QLNSWRe1wh",
-        "monthly_3mo_discount": "prod_RajCfiC1htqESQ",
-        "annual_free_week": "prod_RajEnG8s4m67Lz",
-        "annual_further_discount": "prod_RajGaTaWhFnLNl"
+        "monthly_no_offer": "price_1QhXfxDi1nqWbBYc76q14cWL",
+        "monthly_3mo_discount": "price_1QhdvrDi1nqWbBYcWOcfXTRJ",
+        "annual_free_week": "price_1QhdyFDi1nqWbBYcdzAdZ7lE",
+        "annual_further_discount": "price_1Qhe01Di1nqWbBYcixjWCokH"
     }
 
     price_id = price_map.get(subscription_plan)
