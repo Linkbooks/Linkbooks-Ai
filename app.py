@@ -489,43 +489,48 @@ def generate_new_state(chat_session_id):
 ## Typically in a config file or environment variable
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
-def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=False, chat_session_id=None):
-    # Map subscription plans to Stripe Price IDs
-    price_map = {
-        "monthly_no_offer": "price_1QhXfxDi1nqWbBYc76q14cWL",
-        "monthly_3mo_discount": "price_1QhdvrDi1nqWbBYcWOcfXTRJ",
-        "annual_free_week": "price_1QhdyFDi1nqWbBYcdzAdZ7lE",
-        "annual_further_discount": "price_1Qhe01Di1nqWbBYcixjWCokH"
+def create_stripe_checkout_session(user_id, email, subscription_plan, chat_session_id=None):
+    # Map subscription plans to Stripe Price IDs and trial durations
+    plan_details = {
+        "monthly_no_offer": {"price_id": "price_1QhXfxDi1nqWbBYc76q14cWL", "trial_days": 0},
+        "monthly_3mo_discount": {"price_id": "price_1QhdvrDi1nqWbBYcWOcfXTRJ", "trial_days": 0},
+        "annual_free_week": {"price_id": "price_1QhdyFDi1nqWbBYcdzAdZ7lE", "trial_days": 7},
+        "annual_further_discount": {"price_id": "price_1Qhe01Di1nqWbBYcixjWCokH", "trial_days": 0}
     }
 
-    price_id = price_map.get(subscription_plan)
-    if not price_id:
+    # Validate the selected plan
+    plan = plan_details.get(subscription_plan)
+    if not plan:
         raise ValueError("Invalid subscription plan selected")
 
-    # Determine trial period
-    trial_period_days = 7 if free_week and subscription_plan.startswith("monthly") else 0
+    # Extract price ID and trial period for the selected plan
+    price_id = plan["price_id"]
+    trial_period_days = plan["trial_days"]
 
     # Build success and cancel URLs with optional chat_session_id
     base_success_url = "https://linkbooksai.com/payment-success"
     base_cancel_url = "https://linkbooksai.com/payment-cancel"
 
-    # Add session_id to success URL
     success_url = f"{base_success_url}?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = base_cancel_url
 
-    # Append chat_session_id to URLs if provided
     if chat_session_id:
         success_url += f"&chat_session_id={chat_session_id}"
         cancel_url += f"?chat_session_id={chat_session_id}"
 
     try:
+        # Prepare subscription data
+        subscription_data = {}
+        if trial_period_days > 0:
+            subscription_data["trial_period_days"] = trial_period_days  # Include trial only for eligible plans
+
         # Create the Stripe Checkout Session
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
             customer_email=email,
-            subscription_data={"trial_period_days": trial_period_days},
+            subscription_data=subscription_data,  # Add trial days only if > 0
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={
@@ -541,12 +546,13 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=
     return session.url
 
 
+
 # Step 1: Create the initial subscription with 3 months discount
 def create_discounted_subscription(customer_id, email):
     # Create the subscription with the 3-month discount plan
     subscription = stripe.Subscription.create(
         customer=customer_id,
-        items=[{"price": "prod_RajCfiC1htqESQ"}],  # £15 Price ID
+        items=[{"price": "price_1QhdvrDi1nqWbBYcWOcfXTRJ"}],  # £15 Price ID
         billing_cycle_anchor="now",
         expand=["latest_invoice.payment_intent"],
     )
@@ -556,12 +562,12 @@ def create_discounted_subscription(customer_id, email):
         subscription.id,
         phases=[
             {
-                "items": [{"price": "price_3month_discount"}],  # £15 for 3 months
+                "items": [{"price": "price_1QhdvrDi1nqWbBYcWOcfXTRJ"}],  # £15 for 3 months
                 "start_date": int(time.time()),
                 "end_date": int(time.time()) + (3 * 30 * 24 * 60 * 60),  # Approx. 3 months
             },
             {
-                "items": [{"price": "prod_Raj8QLNSWRe1wh"}],  # £10/month Price ID
+                "items": [{"price": "price_1QhXfxDi1nqWbBYc76q14cWL"}],  # £10/month Price ID
             },
         ],
     )
@@ -817,21 +823,23 @@ def create_account():
 def create_stripe_session():
     data = request.get_json()
     email = data.get('email')
-    chat_session_id = data.get('chat_session_id')
     subscription_plan = data.get('subscription_plan')
+    chat_session_id = data.get('chat_session_id')  # Optional parameter
 
     try:
+        # Pass chat_session_id only if it exists
         session_url = create_stripe_checkout_session(
             user_id=None,  # Optional, for linking users to your system
             email=email,
             subscription_plan=subscription_plan,
             free_week=False,
-            chat_session_id=chat_session_id  # Pass chat_session_id
+            chat_session_id=chat_session_id  # Pass through if available
         )
         return jsonify({"sessionId": session_url}), 200
     except Exception as e:
         logging.error(f"Error creating Stripe session: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/stripe-webhook', methods=['POST'])
