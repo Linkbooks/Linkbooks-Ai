@@ -492,7 +492,7 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=False, chat_session_id=None):
     # Map subscription plans to Stripe Price IDs
     price_map = {
-        "monthly": "price_123_monthly",  
+        "monthly": "price_123_monthly",
         "monthly_3mo_discount": "price_ABC_3monthdiscount",
         "annual": "price_456_annual",
         "annual_3mo_discount": "price_DEF_3monthannual"
@@ -502,7 +502,8 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=
     if not price_id:
         raise ValueError("Invalid subscription plan selected")
 
-    trial_period_days = 7 if (free_week and subscription_plan.startswith("monthly")) else 0
+    # Determine trial period
+    trial_period_days = 7 if free_week and subscription_plan.startswith("monthly") else 0
 
     # Build success and cancel URLs with optional chat_session_id
     base_success_url = "https://linkbooksai.com/payment-success"
@@ -512,22 +513,33 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, free_week=
     success_url = f"{base_success_url}?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = base_cancel_url
 
-    # If chat_session_id exists, append it to the URLs
+    # Append chat_session_id to URLs if provided
     if chat_session_id:
         success_url += f"&chat_session_id={chat_session_id}"
         cancel_url += f"?chat_session_id={chat_session_id}"
 
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        mode="subscription",
-        line_items=[{"price": price_id, "quantity": 1}],
-        customer_email=email,
-        subscription_data={"trial_period_days": trial_period_days},
-        success_url=success_url,
-        cancel_url=cancel_url,
-    )
+    try:
+        # Create the Stripe Checkout Session
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            customer_email=email,
+            subscription_data={"trial_period_days": trial_period_days},
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "subscription_plan": subscription_plan,
+                "chat_session_id": chat_session_id
+            }
+        )
+    except stripe.error.StripeError as e:
+        # Log the error for debugging
+        logging.error(f"Stripe API error: {e}")
+        raise Exception(f"Failed to create Stripe session: {str(e)}")
 
     return session.url
+
 
 
 
@@ -778,20 +790,22 @@ def create_stripe_session_route():
     data = request.get_json()
     email = data.get('email')
     chat_session_id = data.get('chat_session_id')
-    subscription_plan = data.get('subscription_plan')  # Get the selected plan
+    subscription_plan = data.get('subscription_plan')
 
     try:
-        # Create the Stripe session
         session_url = create_stripe_checkout_session(
-            user_id=None,  # Optional, if you're linking to a user in your system
+            user_id=None,  # Optional, for linking users to your system
             email=email,
             subscription_plan=subscription_plan,
-            free_week=False,  # Adjust based on your logic
-            chat_session_id=chat_session_id
+            free_week=False,
+            chat_session_id=chat_session_id  # Pass chat_session_id
         )
         return jsonify({"sessionId": session_url}), 200
     except Exception as e:
+        logging.error(f"Error creating Stripe session: {e}")
         return jsonify({"error": str(e)}), 500
+
+
 
 
 
@@ -817,13 +831,46 @@ def stripe_webhook():
         # Invalid signature
         return "Invalid signature", 400
 
-    # Handle subscription/payment events
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        # retrieve the subscription or customer ID from session
-        # update user_profiles.subscription_status = 'active'
-    
+        email = session.get("customer_email")
+        subscription_plan = session.get("metadata", {}).get("subscription_plan")
+        chat_session_id = session.get("metadata", {}).get("chat_session_id")
+
+        # Create the user in Supabase Auth
+        try:
+            auth_response = supabase.auth.sign_up({"email": email, "password": "generated_password"})
+            user_id = auth_response.user.id if auth_response.user else None
+            if not user_id:
+                raise Exception("Failed to create user in Supabase Auth.")
+        except Exception as e:
+            logging.error(f"Auth creation failed for {email}: {e}")
+            return "Error creating user in Supabase Auth", 500
+
+        # Insert user profile
+        try:
+            user_profile = {
+                "id": user_id,
+                "email": email,
+                "subscription_status": "active",
+                "subscription_plan": subscription_plan,
+                "chat_session_id": chat_session_id,
+                "is_verified": False,
+            }
+            supabase.table("user_profiles").insert(user_profile).execute()
+        except Exception as e:
+            logging.error(f"Error inserting user profile for {email}: {e}")
+            return "Error saving user profile", 500
+
+        # Send verification email
+        try:
+            supabase.auth.api.send_magic_link(email)
+        except Exception as e:
+            logging.error(f"Error sending verification email to {email}: {e}")
+            return "Error sending verification email", 500
+
     return "", 200
+
 
 
 # ------------------------------------------
