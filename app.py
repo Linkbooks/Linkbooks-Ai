@@ -707,9 +707,12 @@ def login():
 @app.route('/create-account', methods=['GET', 'POST'])
 def create_account():
     if request.method == 'GET':
-        # Render the Create Account page, passing chat_session_id
+        # Render the Create Account page, passing chat_session_id and publishable key
         chat_session_id = request.args.get('chat_session_id', None)
-        return render_template('create_account.html', chat_session_id=chat_session_id)
+        publishable_key = os.getenv('STRIPE_PUBLISHABLE_KEY')  # Fetch from environment variables
+        return render_template('create_account.html', 
+                               chat_session_id=chat_session_id, 
+                               publishable_key=publishable_key)
 
     elif request.method == 'POST':
         # Handle form submission
@@ -768,6 +771,28 @@ def create_account():
             return jsonify({"success": False, "error_message": "Failed to save user profile."}), 500
 
         return jsonify({"success": True, "success_message": "Account created successfully!"}), 200
+    
+    
+@app.route('/create-stripe-session', methods=['POST'])
+def create_stripe_session_route():
+    data = request.get_json()
+    email = data.get('email')
+    chat_session_id = data.get('chat_session_id')
+    subscription_plan = data.get('subscription_plan')  # Get the selected plan
+
+    try:
+        # Create the Stripe session
+        session_url = create_stripe_checkout_session(
+            user_id=None,  # Optional, if you're linking to a user in your system
+            email=email,
+            subscription_plan=subscription_plan,
+            free_week=False,  # Adjust based on your logic
+            chat_session_id=chat_session_id
+        )
+        return jsonify({"sessionId": session_url}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/confirmation')

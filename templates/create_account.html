@@ -11,6 +11,8 @@
     href="{{ url_for('static', filename='styles.css') }}"
     onerror="this.onerror=null; this.href='static/styles.css';"
   />
+  <!-- Stripe.js -->
+  <script src="https://js.stripe.com/v3/"></script>
 
   <style>
     /* Styles for success and error messages */
@@ -330,10 +332,15 @@
             </div>
           </div>
         
-          
-        <button type="submit" class="button" aria-label="Create Account">
-          Create Account
+        <!-- Add hidden input for chat_session_id -->
+        <input type="hidden" id="chat-session-id" name="chat_session_id" value="{{ chat_session_id }}">
+
+        <!-- Stripe Checkout Button -->
+        <button id="checkout-button" type="button" class="button" aria-label="Proceed to Payment">
+          Proceed to Payment
         </button>
+
+          
         <span
           class="loading-spinner hidden"
           id="loading-spinner"
@@ -361,6 +368,51 @@
       <a href="/" class="button">Back to Homepage</a>
     </div>
   </footer>
+
+  <!-- Stripe Integration -->
+  <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Initialize Stripe with your dynamically passed publishable key
+        const stripe = Stripe('{{ publishable_key }}');
+
+        // Handle Stripe Checkout button click
+        document.getElementById('checkout-button').addEventListener('click', function () {
+            const chatSessionId = document.querySelector('input[name="chat_session_id"]').value; // Retrieve chat_session_id
+            const email = document.getElementById('email').value;
+
+            // Example for selecting subscription plan
+            const selectedPlan = document.querySelector('input[name="offer"]:checked').value;
+
+            // Make a POST request to create a Stripe Checkout session
+            fetch('/create-stripe-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: email,
+                    chat_session_id: chatSessionId,
+                    subscription_plan: selectedPlan, // Pass the selected plan
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.sessionId) {
+                    // Redirect to Stripe Checkout
+                    stripe.redirectToCheckout({ sessionId: data.sessionId })
+                        .then(result => {
+                            if (result.error) {
+                                alert(result.error.message);
+                            }
+                        });
+                } else {
+                    alert('Failed to create Stripe session.');
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        });
+    });
+  </script>
 
   <!-- JavaScript for Enhanced Functionality -->
   <script>
