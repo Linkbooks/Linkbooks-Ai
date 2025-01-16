@@ -828,7 +828,7 @@ def create_stripe_session():
         free_week = subscription_plan == "annual_free_week"
 
         # Pass chat_session_id only if it exists
-        session_url = create_stripe_checkout_session(
+        session = create_stripe_checkout_session(
             user_id=None,  # Optional, for linking users to your system
             email=email,
             subscription_plan=subscription_plan,
@@ -838,10 +838,12 @@ def create_stripe_session():
         # Update Supabase to track free_week status
         supabase.table("user_profiles").update({"free_week": free_week}).eq("email", email).execute()
 
-        return jsonify({"sessionId": session_url}), 200
+        # Return only the session ID to the frontend
+        return jsonify({"sessionId": session.id}), 200
     except Exception as e:
         logging.error(f"Error creating Stripe session: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
