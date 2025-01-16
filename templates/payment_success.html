@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Successful</title>
+    <script>
+        // Preserve chat_session_id in the redirect
+        function redirectToDashboard() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const chatSessionId = urlParams.get('chat_session_id');
+            const redirectUrl = chatSessionId 
+                ? `/dashboard?chat_session_id=${chatSessionId}` 
+                : '/dashboard';
+            window.location.href = redirectUrl;
+        }
+    </script>
+</head>
+<body>
+    <h1>Thank You!</h1>
+    <p>Your payment was successful.</p>
+    <button onclick="redirectToDashboard()">Go to Dashboard</button>
+</body>
+</html>
