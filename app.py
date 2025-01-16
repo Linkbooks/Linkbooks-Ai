@@ -538,12 +538,11 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, chat_sessi
                 "chat_session_id": chat_session_id
             }
         )
+        return session  # Return the full session object instead of session.url
+    
     except stripe.error.StripeError as e:
-        # Log the error for debugging
         logging.error(f"Stripe API error: {e}")
         raise Exception(f"Failed to create Stripe session: {str(e)}")
-
-    return session.url
 
 
 
