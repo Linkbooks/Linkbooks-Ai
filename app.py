@@ -926,6 +926,25 @@ def stripe_webhook():
 
     return "", 200
 
+#-------------Stripe Redirect Routes-------------#
+
+@app.route('/payment_success')
+def payment_success():
+    session_id = request.args.get('session_id')
+    chat_session_id = request.args.get('chat_session_id')  # Retrieve chat_session_id if present
+    
+    if not session_id:
+        return "Missing session ID", 400
+
+    # Optionally, you can use session_id to fetch session details from Stripe.
+    return render_template('payment_success.html', session_id=session_id, chat_session_id=chat_session_id)
+
+
+@app.route('/payment_cancel')
+def payment_cancel():
+    chat_session_id = request.args.get('chat_session_id')
+    return render_template('payment_cancel.html', chat_session_id=chat_session_id)
+
 
 
 # ------------------------------------------
