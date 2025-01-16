@@ -2,11 +2,12 @@ import os
 import logging
 import requests
 import secrets
-import random, string
+import random
+import string
 import bcrypt
 import time
 import atexit
-from flask import render_template, redirect, request, make_response, url_for, jsonify, Flask
+from flask import render_template, redirect, request, make_response, url_for, jsonify, Flask, session
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -23,51 +24,46 @@ from flask_limiter.util import get_remote_address
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.events import EVENT_JOB_ERROR
 from urllib.parse import quote
+import uuid  # Added for chat_session_id generation
 
 # ------------------------------------------------------------------------------
 # Environment variables
 # ------------------------------------------------------------------------------
+
+# Load environment variables from .env file in development mode
 if os.getenv("FLASK_ENV") == "development":
     load_dotenv()
 
 DEV_MODE = os.getenv("FLASK_ENV", "production") == "development"
 
+# Validate JWT_SECRET_KEY
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("JWT_SECRET_KEY environment variable is missing.")
 
-# Logging Configuration
-log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(
-    level=getattr(logging, log_level, logging.INFO),
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-logging.info(f"Running in {os.getenv('FLASK_ENV', 'unknown')} mode.")
-
+# Define required environment variables
 required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY', 'FLASK_SECRET_KEY']
 if DEV_MODE:
     required_env_vars.extend(['QB_SANDBOX_CLIENT_ID', 'QB_SANDBOX_CLIENT_SECRET', 'SANDBOX_REDIRECT_URI'])
 else:
     required_env_vars.extend(['QB_PROD_CLIENT_ID', 'QB_PROD_CLIENT_SECRET', 'PROD_REDIRECT_URI'])
 
+# Check for missing environment variables
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 if missing_vars:
     raise RuntimeError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
+# Print loaded environment variables (masking sensitive ones)
 print("Loaded Environment Variables:")
-for key, value in os.environ.items():
-    if key in required_env_vars:
-        # Mask out secrets
-        print(f"{key}: {'*****' if 'KEY' in key or 'SECRET' in key else value}")
-
-app.secret_key = os.getenv('FLASK_SECRET_KEY')
-if not app.secret_key:
-    raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
+for key in required_env_vars:
+    value = os.getenv(key)
+    # Mask out secrets
+    print(f"{key}: {'*****' if 'KEY' in key or 'SECRET' in key else value}")
 
 # ------------------------------------------------------------------------------
 # Flask app initialization
 # ------------------------------------------------------------------------------
+
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 if not app.secret_key:
@@ -76,6 +72,7 @@ if not app.secret_key:
 # ------------------------------------------------------------------------------
 # Logging Configuration
 # ------------------------------------------------------------------------------
+
 log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
     level=getattr(logging, log_level, logging.INFO),
@@ -87,6 +84,7 @@ logging.info(f"Running in {os.getenv('FLASK_ENV', 'unknown')} mode.")
 # ------------------------------------------------------------------------------
 # Supabase Initialization
 # ------------------------------------------------------------------------------
+
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
@@ -169,6 +167,14 @@ limiter = Limiter(
 )
 limiter.init_app(app)
 
+
+# ------------------------------------------------------------------------------
+# Flask app initialization
+# ------------------------------------------------------------------------------
+app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY')
+if not app.secret_key:
+    raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
 # ------------------------------------------------------------------------------
 # Configure Stripe
