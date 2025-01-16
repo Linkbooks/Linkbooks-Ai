@@ -167,7 +167,6 @@
 
       <!-- Registration Form -->
       <form id="create-account-form" method="POST">
-        <input type="hidden" name="chat_session_id" value="{{ request.args.get('chat_session_id', '') }}">
         <div class="input-group">
           <label for="name">Full Name:</label>
           <input
@@ -369,75 +368,77 @@
     </div>
   </footer>
 
-  <!-- Stripe Integration -->
+
+<!-- Stripe Integration -->
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-      // Initialize Stripe with your dynamically passed publishable key
-      const stripe = Stripe('{{ publishable_key }}');
+    // Handle Stripe Checkout button click
+    document.getElementById('checkout-button').addEventListener('click', function () {
+      console.log('Proceed to Payment button clicked');
 
-      // Handle Stripe Checkout button click
-      document.getElementById('checkout-button').addEventListener('click', function () {
-          console.log('Proceed to Payment button clicked');
-          const chatSessionId = document.querySelector('input[name="chat_session_id"]').value; // Retrieve chat_session_id
-          const email = document.getElementById('email').value;
+      const email = document.getElementById('email').value;
 
-          // Ensure a subscription plan is selected
-          const selectedPlanElement = document.querySelector('input[name="offer"]:checked');
-          if (!selectedPlanElement) {
-              alert('Please select a subscription plan.');
-              return;
+      // Ensure a subscription plan is selected
+      const selectedPlanElement = document.querySelector('input[name="offer"]:checked');
+      if (!selectedPlanElement) {
+        alert('Please select a subscription plan.');
+        return;
+      }
+      const selectedPlan = selectedPlanElement.value;
+      console.log('Selected Plan:', selectedPlan);
+
+      // Ensure email is entered
+      if (!email) {
+        alert('Please enter your email.');
+        return;
+      }
+
+      // Optionally retrieve chat_session_id from URL or storage
+      const params = new URLSearchParams(window.location.search);
+      const chatSessionId = params.get('chat_session_id') || null;
+
+      // Prepare the payload
+      const payload = {
+        email: email,
+        subscription_plan: selectedPlan, // Pass the selected plan
+      };
+
+      if (chatSessionId) {
+        payload.chat_session_id = chatSessionId; // Add it only if available
+      }
+
+      // Make a POST request to create a Stripe Checkout session
+      fetch('/create-stripe-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+        .then(response => {
+          console.log('Fetch Response:', response);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
-          const selectedPlan = selectedPlanElement.value;
-          console.log('Selected Plan:', selectedPlan);
-
-          // Ensure email is entered
-          if (!email) {
-              alert('Please enter your email.');
-              return;
+          return response.json();
+        })
+        .then(data => {
+          console.log('Session Data:', data); // Log the full response for debugging
+          if (data.sessionId) {
+            console.log('Session ID:', data.sessionId); // Confirm session ID is being received
+            window.location.href = `https://checkout.stripe.com/pay/${data.sessionId}`;
+          } else {
+            console.error('No session ID received:', data); // Log if sessionId is missing
+            alert('Failed to create Stripe session.');
           }
-
-          // Make a POST request to create a Stripe Checkout session
-          fetch('/create-stripe-session', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                  email: email,
-                  chat_session_id: chatSessionId,
-                  subscription_plan: selectedPlan, // Pass the selected plan
-              }),
-          })
-              .then(response => {
-                  console.log('Fetch Response:', response);
-                  if (!response.ok) {
-                      throw new Error(`HTTP error! status: ${response.status}`);
-                  }
-                  return response.json();
-              })
-              .then(data => {
-                  console.log('Session Data:', data); // Log the full response for debugging
-                  if (data.sessionId) {
-                      console.log('Session ID:', data.sessionId); // Confirm session ID is being received
-                      stripe.redirectToCheckout({ sessionId: data.sessionId })
-                          .then(result => {
-                              if (result.error) {
-                                  console.error('Stripe redirect error:', result.error); // Log specific redirect error details
-                                  alert(result.error.message);
-                              }
-                          })
-                          .catch(err => console.error('Stripe redirection failed:', err)); // Handle general redirection failures
-                  } else {
-                      console.error('No session ID received:', data); // Log if sessionId is missing
-                      alert('Failed to create Stripe session.');
-                  }
-              })
-              .catch(error => {
-                  console.error('Error creating Stripe session:', error); // Log detailed error
-              });
-      });
+        })
+        .catch(error => {
+          console.error('Error creating Stripe session:', error); // Log detailed error
+        });
+    });
   });
 </script>
+
 
 
   <!-- JavaScript for Enhanced Functionality -->
