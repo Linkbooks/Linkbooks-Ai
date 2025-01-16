@@ -149,6 +149,13 @@ logging.info("Scheduler started successfully.")
 # Register scheduler shutdown
 atexit.register(lambda: scheduler.shutdown())
 
+# ------------------------------------------------------------------------------
+# Flask app initialization
+# ------------------------------------------------------------------------------
+app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY')
+if not app.secret_key:
+    raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
 # ------------------------------------------------------------------------------
 # Limiter
@@ -158,14 +165,6 @@ limiter = Limiter(
 )
 limiter.init_app(app)
 
-
-# ------------------------------------------------------------------------------
-# Flask app initialization
-# ------------------------------------------------------------------------------
-app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY')
-if not app.secret_key:
-    raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
 # ------------------------------------------------------------------------------
 # Configure Stripe
