@@ -547,32 +547,29 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, chat_sessi
 
 
 
-# Step 1: Create the initial subscription with 3 months discount
+
 def create_discounted_subscription(customer_id, email):
-    # Create the subscription with the 3-month discount plan
-    subscription = stripe.Subscription.create(
-        customer=customer_id,
-        items=[{"price": "price_1QhdvrDi1nqWbBYcWOcfXTRJ"}],  # £15 Price ID
-        billing_cycle_anchor="now",
-        expand=["latest_invoice.payment_intent"],
-    )
+    try:
+        # Create a subscription schedule for phased billing
+        subscription_schedule = stripe.SubscriptionSchedule.create(
+            customer=customer_id,
+            start_date="now",
+            end_behavior="release",
+            phases=[
+                {
+                    "items": [{"price": "price_1QhdvrDi1nqWbBYcWOcfXTRJ"}],  # £15 for 3 months
+                    "iterations": 3,  # 3 billing cycles
+                },
+                {
+                    "items": [{"price": "price_1QhXfxDi1nqWbBYc76q14cWL"}],  # £10/month thereafter
+                },
+            ],
+        )
+        return subscription_schedule
+    except stripe.error.StripeError as e:
+        logging.error(f"Stripe API error while creating subscription schedule: {e}")
+        raise Exception(f"Failed to create subscription schedule: {str(e)}")
 
-    # Step 2: Schedule the transition to £10/month plan after 3 months
-    stripe.Subscription.update(
-        subscription.id,
-        phases=[
-            {
-                "items": [{"price": "price_1QhdvrDi1nqWbBYcWOcfXTRJ"}],  # £15 for 3 months
-                "start_date": int(time.time()),
-                "end_date": int(time.time()) + (3 * 30 * 24 * 60 * 60),  # Approx. 3 months
-            },
-            {
-                "items": [{"price": "price_1QhXfxDi1nqWbBYc76q14cWL"}],  # £10/month Price ID
-            },
-        ],
-    )
-
-    return subscription
 
 
 
@@ -827,14 +824,20 @@ def create_stripe_session():
     chat_session_id = data.get('chat_session_id')  # Optional parameter
 
     try:
+        # Identify if the plan includes a free week
+        free_week = subscription_plan == "annual_free_week"
+
         # Pass chat_session_id only if it exists
         session_url = create_stripe_checkout_session(
             user_id=None,  # Optional, for linking users to your system
             email=email,
             subscription_plan=subscription_plan,
-            free_week=False,
             chat_session_id=chat_session_id  # Pass through if available
         )
+
+        # Update Supabase to track free_week status
+        supabase.table("user_profiles").update({"free_week": free_week}).eq("email", email).execute()
+
         return jsonify({"sessionId": session_url}), 200
     except Exception as e:
         logging.error(f"Error creating Stripe session: {e}")
@@ -851,51 +854,32 @@ def stripe_webhook():
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except ValueError:
-        # Invalid payload
         return "Invalid payload", 400
     except stripe.error.SignatureVerificationError:
-        # Invalid signature
         return "Invalid signature", 400
 
-    # Handle 'checkout.session.completed' event
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         email = session.get("customer_email")
         subscription_plan = session.get("metadata", {}).get("subscription_plan")
         chat_session_id = session.get("metadata", {}).get("chat_session_id")
-        customer_id = session.get("customer")  # Get Stripe customer ID
+        customer_id = session.get("customer")
 
         try:
             user_profile = {
                 "email": email,
-                "subscription_status": "active",  # Start as active since the session completed
+                "subscription_status": "active",
                 "subscription_plan": subscription_plan,
                 "chat_session_id": chat_session_id,
-                "customer_id": customer_id,  # Save the Stripe customer ID
+                "customer_id": customer_id,
             }
-
-            # Use transaction to ensure atomicity
-            try:
-                with supabase.transaction() as txn:
-                    supabase.table("user_profiles").upsert(user_profile, transaction=txn)
-                    txn.commit()
-            except Exception as e:
-                logging.error(f"Transaction failed: {e}")
-                txn.rollback()
-                raise
-
-            # Send verification email
-            try:
-                supabase.auth.api.send_magic_link(email)
-            except Exception as e:
-                logging.error(f"Error sending verification email to {email}: {e}")
-                return "Error sending verification email", 500
-
+            with supabase.transaction() as txn:
+                supabase.table("user_profiles").upsert(user_profile, transaction=txn)
+                txn.commit()
         except Exception as e:
-            logging.error(f"Error creating or updating user profile for {email}: {e}")
+            logging.error(f"Transaction failed: {e}")
             return "Error saving user profile", 500
 
-    # Handle 'invoice.payment_succeeded' event
     elif event["type"] == "invoice.payment_succeeded":
         invoice = event["data"]["object"]
         customer_id = invoice['customer']
@@ -904,48 +888,43 @@ def stripe_webhook():
             with supabase.transaction() as txn:
                 user_profile = supabase.table("user_profiles").select("*").eq("customer_id", customer_id).execute()
                 if not user_profile.data:
-                    logging.error(f"No user found for customer_id {customer_id}. Cannot update subscription status.")
+                    logging.error(f"No user found for customer_id {customer_id}.")
                     raise Exception("User not found")
 
                 supabase.table("user_profiles").update({"subscription_status": "active"}, transaction=txn).eq("customer_id", customer_id).execute()
                 txn.commit()
-
         except Exception as e:
             logging.error(f"Error updating subscription status for customer {customer_id}: {e}")
-            txn.rollback()
             return "Error updating subscription status", 500
 
-    # Handle 'customer.subscription.updated' event
     elif event["type"] == "customer.subscription.updated":
         subscription = event["data"]["object"]
-        customer_id = subscription['customer']
-        status = subscription['status']  # Example: 'active', 'canceled', 'past_due'
+        customer_id = subscription["customer"]
+        status = subscription["status"]
+        trial_end = subscription.get("trial_end")
 
         try:
             with supabase.transaction() as txn:
                 user_profile = supabase.table("user_profiles").select("*").eq("customer_id", customer_id).execute()
                 if not user_profile.data:
-                    logging.error(f"No user found for customer_id {customer_id}. Cannot update subscription status.")
+                    logging.error(f"No user found for customer_id {customer_id}.")
                     raise Exception("User not found")
 
-                supabase.table("user_profiles").update({"subscription_status": status}, transaction=txn).eq("customer_id", customer_id).execute()
-                txn.commit()
+                updates = {"subscription_status": status}
+                if trial_end and trial_end < time.time():
+                    updates["free_week"] = False
 
+                supabase.table("user_profiles").update(updates, transaction=txn).eq("customer_id", customer_id).execute()
+                txn.commit()
         except Exception as e:
             logging.error(f"Error updating subscription status for customer {customer_id}: {e}")
-            txn.rollback()
             return "Error updating subscription status", 500
 
-    # Return 200 for unhandled or irrelevant events
     else:
         logging.info(f"Unhandled event type: {event['type']}")
 
     return "", 200
 
-
-@app.route('/confirmation')
-def confirmation():
-    return render_template('confirmation.html')
 
 
 # ------------------------------------------
