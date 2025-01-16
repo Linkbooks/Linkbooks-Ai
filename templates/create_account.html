@@ -397,19 +397,26 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data.sessionId) {
-                    // Redirect to Stripe Checkout
-                    stripe.redirectToCheckout({ sessionId: data.sessionId })
-                        .then(result => {
-                            if (result.error) {
-                                alert(result.error.message);
-                            }
-                        });
-                } else {
-                    alert('Failed to create Stripe session.');
-                }
-            })
-            .catch(error => console.error('Error:', error));
+              console.log('Session Data:', data); // Log the full response for debugging
+              if (data.sessionId) {
+                  console.log('Session ID:', data.sessionId); // Confirm session ID is being received
+                  stripe.redirectToCheckout({ sessionId: data.sessionId })
+                      .then(result => {
+                          if (result.error) {
+                              console.error('Stripe redirect error:', result.error); // Log specific redirect error details
+                              alert(result.error.message);
+                          }
+                      })
+                      .catch(err => console.error('Stripe redirection failed:', err)); // Handle general redirection failures
+              } else {
+                  console.error('No session ID received:', data); // Log if sessionId is missing
+                  alert('Failed to create Stripe session.');
+              }
+          })
+          .catch(error => {
+              console.error('Error creating Stripe session:', error); // Log detailed error
+          });
+          
         });
     });
   </script>
