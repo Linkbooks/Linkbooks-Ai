@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Email Verified</title>
+</head>
+<body>
+    <h2>Your email has been successfully verified!</h2>
+    <p>You can now <a href="/login">log in</a> to your account.</p>
+    {% if chat_session_id %}
+        <p>Your chat session is ready. You can continue where you left off.</p>
+        <!-- Add any additional logic to reconnect the chat session -->
+    {% endif %}
+</body>
+</html>

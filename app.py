@@ -5,7 +5,9 @@ import secrets
 import random, string
 import bcrypt
 import time
+import atexit
 from flask import render_template, redirect, request, make_response, url_for, jsonify, Flask
+from flask_mail import Mail, Message
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -21,49 +23,6 @@ from flask_limiter.util import get_remote_address
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.events import EVENT_JOB_ERROR
 from urllib.parse import quote
-
-# ------------------------------------------------------------------------------
-# Scheduler initialization
-# ------------------------------------------------------------------------------
-scheduler = BackgroundScheduler()
-
-def cleanup_expired_states():
-    """
-    Deletes any entries in chatgpt_oauth_states whose 'expiry' is in the past.
-    """
-    try:
-        now = datetime.utcnow().isoformat()
-        supabase.table("chatgpt_oauth_states").delete().lt("expiry", now).execute()
-        logging.info("Expired state tokens cleaned up.")
-    except Exception as e:
-        logging.error(f"Error cleaning up expired states: {e}")
-
-scheduler.add_job(cleanup_expired_states, 'interval', hours=1)
-
-def log_scheduler_error(event):
-    """
-    Logs errors from the scheduler.
-    """
-    if event.exception:
-        logging.error(f"Scheduler job failed: {event.job_id}, Exception: {event.exception}")
-
-scheduler.add_listener(log_scheduler_error, EVENT_JOB_ERROR)
-scheduler.start()
-
-# ------------------------------------------------------------------------------
-# Flask app initialization
-# ------------------------------------------------------------------------------
-app = Flask(__name__)
-
-@app.before_request
-def initialize_scheduler():
-    """
-    Ensures the scheduler is running before handling requests.
-    """
-    if not scheduler.running:
-        scheduler.add_job(cleanup_expired_states, 'interval', hours=1)
-        scheduler.start()
-
 
 # ------------------------------------------------------------------------------
 # Environment variables
@@ -107,12 +66,23 @@ if not app.secret_key:
     raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
 # ------------------------------------------------------------------------------
-# Limiter
+# Flask app initialization
 # ------------------------------------------------------------------------------
-limiter = Limiter(
-    key_func=get_remote_address
+app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY')
+if not app.secret_key:
+    raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
+
+# ------------------------------------------------------------------------------
+# Logging Configuration
+# ------------------------------------------------------------------------------
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(
+    level=getattr(logging, log_level, logging.INFO),
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
-limiter.init_app(app)
+
+logging.info(f"Running in {os.getenv('FLASK_ENV', 'unknown')} mode.")
 
 # ------------------------------------------------------------------------------
 # Supabase Initialization
@@ -127,6 +97,92 @@ try:
 except Exception as e:
     logging.error(f"Error initializing Supabase client: {e}")
     supabase = None
+    raise e  # It's critical to have Supabase initialized
+
+# ------------------------------------------------------------------------------
+# Scheduler initialization
+# ------------------------------------------------------------------------------
+
+scheduler = BackgroundScheduler()
+
+def cleanup_expired_states():
+    """
+    Deletes expired entries in 'chatgpt_oauth_states'.
+    """
+    try:
+        now = datetime.utcnow().isoformat()
+        supabase.table("chatgpt_oauth_states").delete().lt("expiry", now).execute()
+        logging.info("Expired state tokens cleaned up.")
+    except Exception as e:
+        logging.error(f"Error cleaning up expired states: {e}")
+
+def cleanup_expired_verifications():
+    """
+    Deletes expired email verifications from 'email_verifications'.
+    """
+    try:
+        now = datetime.utcnow().isoformat()
+        supabase.table("email_verifications").delete().lt("expires_at", now).execute()
+        logging.info("Expired email verifications cleaned up.")
+    except Exception as e:
+        logging.error(f"Error cleaning up expired email verifications: {e}")
+
+def cleanup_inactive_users():
+    """
+    Deletes inactive user accounts created over 24 hours ago.
+    """
+    try:
+        cutoff_time = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        supabase.table("user_profiles").delete().lt("created_at", cutoff_time).eq("subscription_status", "inactive").execute()
+        logging.info("Inactive user accounts cleaned up.")
+    except Exception as e:
+        logging.error(f"Error cleaning up inactive user accounts: {e}")
+
+def log_scheduler_error(event):
+    """
+    Logs errors occurring in scheduled jobs.
+    """
+    if event.exception:
+        logging.error(f"Scheduler job failed: {event.job_id}, Exception: {event.exception}")
+
+# Schedule cleanup jobs
+scheduler.add_job(cleanup_expired_states, 'interval', hours=1, id='cleanup_expired_states')
+scheduler.add_job(cleanup_expired_verifications, 'cron', hour=0, id='cleanup_expired_verifications')
+scheduler.add_job(cleanup_inactive_users, 'cron', hour=1, id='cleanup_inactive_users')
+
+# Register error listener
+scheduler.add_listener(log_scheduler_error, EVENT_JOB_ERROR)
+
+# Start the scheduler
+scheduler.start()
+logging.info("Scheduler started successfully.")
+
+# Register scheduler shutdown
+atexit.register(lambda: scheduler.shutdown())
+
+
+# ------------------------------------------------------------------------------
+# Limiter
+# ------------------------------------------------------------------------------
+limiter = Limiter(
+    key_func=get_remote_address
+)
+limiter.init_app(app)
+
+
+# ------------------------------------------------------------------------------
+# Configure Stripe
+# ------------------------------------------------------------------------------
+
+stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+
+
+# ------------------------------------------------------------------------------
+# Brevo API Key
+# ------------------------------------------------------------------------------
+
+BREVO_API_KEY = os.getenv('BREVO_API_KEY')
+BREVO_SEND_EMAIL_URL = "https://api.brevo.com/v3/smtp/email"
 
 # ------------------------------------------------------------------------------
 # QuickBooks OAuth config
@@ -167,9 +223,54 @@ debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
 # ------------------------------------------------------------------------------
 # Helper Functions
 # ------------------------------------------------------------------------------
+
+#--------------Brevo-----------------#
+
+# Flask-Mail Configuration
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'True'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = (
+    os.getenv('MAIL_DEFAULT_SENDER_NAME'),
+    os.getenv('MAIL_DEFAULT_SENDER_EMAIL')
+)
+
+mail = Mail(app)
+
+
+def send_verification_email(email, token):
+    try:
+        verification_link = f"https://linkbooksai.com/verify-email?token={token}"
+        msg = Message(
+            subject="Verify Your Email Address",
+            recipients=[email],
+            html=f"""
+                <html>
+                    <body>
+                        <p>Hello,</p>
+                        <p>Thank you for subscribing to LinkBooksAI!</p>
+                        <p>Please verify your email address by clicking the link below:</p>
+                        <a href="{verification_link}">Verify Email</a>
+                        <p>This link will expire in 24 hours.</p>
+                        <p>If you did not subscribe, please ignore this email.</p>
+                    </body>
+                </html>
+            """
+        )
+        mail.send(msg)
+        logging.info(f"Verification email sent to {email}.")
+    except Exception as e:
+        logging.error(f"Failed to send email to {email}: {e}")
+        raise Exception("Email sending failed.")
+
+
+
 def create_user_with_email(user_data):
     """
     Creates a user in Supabase Auth and user_profiles.
+    Returns user_id on success or raises an exception on failure.
     """
     email = user_data.get("email")
     password = user_data.get("password")
@@ -177,7 +278,16 @@ def create_user_with_email(user_data):
     phone = user_data.get("phone")
     address = user_data.get("address")
 
-    # Step 1: Create the user in Supabase Auth
+    # Step 1: Check if user already exists
+    try:
+        response = supabase.table("user_profiles").select("id").eq("email", email).execute()
+        if response.data:
+            raise Exception("An account with this email already exists.")
+    except Exception as e:
+        logging.error(f"Error checking for existing user: {e}")
+        raise Exception("Failed to verify if the user already exists.")
+
+    # Step 2: Create the user in Supabase Auth
     try:
         auth_response = supabase.auth.sign_up({"email": email, "password": password})
         if auth_response.get('user'):
@@ -185,29 +295,41 @@ def create_user_with_email(user_data):
             logging.info(f"User {name} created successfully in Supabase Auth with ID: {user_id}")
         else:
             logging.error(f"Error creating user in Supabase Auth: {auth_response}")
-            return {"error": "Failed to create user in Supabase Auth."}, 500
+            raise Exception("Failed to create user in Supabase Auth.")
     except Exception as e:
         logging.error(f"Error creating user in Supabase Auth: {e}")
-        return {"error": "Failed to create user."}, 500
+        raise Exception("Failed to create user.")
 
-    # Step 2: Insert additional user data
+    # Step 3: Insert user profile
     try:
-        profile_response = supabase.table('user_profiles').insert({
-            'id': user_id,
-            'name': name,
-            'email': email,
-            'phone': phone,
-            'address': address
-        }).execute()
-
-        if profile_response.data:
-            logging.info(f"User profile created successfully for {name}.")
-        else:
-            logging.error(f"Error creating user profile: {profile_response}")
-            return {"error": "Failed to create user profile."}, 500
+        user_profile = {
+            "id": user_id,
+            "name": name,
+            "email": email,
+            "phone": phone,
+            "address": address,
+            "gpt_config": {"default_behavior": "friendly"},
+            "is_verified": False,
+            "subscription_status": "inactive",
+            "free_week": False,
+            "chat_session_id": user_data.get("chat_session_id"),  # Save chat_session_id for context
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        supabase.table("user_profiles").insert(user_profile).execute()
+        logging.info(f"User profile created successfully for {name}.")
     except Exception as e:
-        logging.error(f"Error creating user profile: {e}")
-        return {"error": "Failed to create user profile."}, 500
+        logging.error(f"Error inserting user profile: {e}")
+        # Delete the created user in Supabase Auth if profile insertion fails
+        try:
+            supabase.auth.api.delete_user(user_id)
+            logging.info(f"Deleted user {user_id} due to profile insertion failure.")
+        except Exception as delete_error:
+            logging.error(f"Error deleting user {user_id}: {delete_error}")
+        raise Exception("Failed to create user profile.")
+
+    return user_id
+
 
 def generate_session_token(user_id, email):
     """
@@ -462,32 +584,10 @@ def validate_state(state):
         raise ValueError("State token expired.")
     return stored_state
 
-def generate_new_state(chat_session_id):
-    """
-    Generates a new state for OAuth and stores it in 'chatgpt_oauth_states'.
-    """
-    try:
-        state = f"{chat_session_id}-{secrets.token_hex(8)}"
-        expiry = (datetime.utcnow() + timedelta(minutes=15)).isoformat()
-
-        supabase.table("chatgpt_oauth_states").upsert({
-            "chat_session_id": chat_session_id,
-            "state": state,
-            "expiry": expiry
-        }).execute()
-
-        logging.info(f"Stored new state for chatSessionId {chat_session_id}: {state}")
-        return state
-    except Exception as e:
-        logging.error(f"Error generating new state for chatSessionId {chat_session_id}: {e}", exc_info=True)
-        raise Exception("Failed to generate and store OAuth state.")
     
 #--------------------------------------------------
 #                 Subscription Helper/Defs        #
 #--------------------------------------------------
-
-## Typically in a config file or environment variable
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
 def create_stripe_checkout_session(user_id, email, subscription_plan, chat_session_id=None):
     # Map subscription plans to Stripe Price IDs and trial durations
@@ -535,10 +635,11 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, chat_sessi
             cancel_url=cancel_url,
             metadata={
                 "subscription_plan": subscription_plan,
-                "chat_session_id": chat_session_id
+                "chat_session_id": chat_session_id,
+                "user_id": user_id  # Include user_id for webhook association
             }
         )
-        return session  # Return the full session object instead of session.url
+        return session  # Return the full session object
     
     except stripe.error.StripeError as e:
         logging.error(f"Stripe API error: {e}")
@@ -746,6 +847,7 @@ def login():
 # Create Account Routes
 # ------------------------------------------
 @app.route('/create-account', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def create_account():
     if request.method == 'GET':
         # Render the Create Account page, passing chat_session_id and publishable key
@@ -766,7 +868,9 @@ def create_account():
         confirm_password = data.get('confirm_password')
         phone = data.get('phone', '').strip()
         address = data.get('address', '').strip()
+        subscription_plan = data.get('subscription_plan')
 
+        # Validate inputs
         if not email or not password or not confirm_password:
             return jsonify({"success": False, "error_message": "Email and passwords are required."}), 400
 
@@ -776,75 +880,54 @@ def create_account():
         if len(password) < 6:
             return jsonify({"success": False, "error_message": "Password must be at least 6 characters long."}), 400
 
-        # Check if user already exists
+        # Validate subscription plan
+        valid_plans = ["monthly_no_offer", "monthly_3mo_discount", "annual_free_week", "annual_further_discount"]
+        if subscription_plan not in valid_plans:
+            return jsonify({"success": False, "error_message": "Invalid subscription plan selected."}), 400
+
+        # Prepare user data
+        user_data = {
+            "email": email,
+            "password": password,
+            "name": name,
+            "phone": phone,
+            "address": address,
+            "chat_session_id": chat_session_id  # Save chat_session_id for context
+        }
+
+        # Create user using the helper function
         try:
-            response = supabase.table("users").select("id").eq("email", email).execute()
-            if response.data:
-                return jsonify({"success": False, "error_message": "An account with this email already exists."}), 400
+            user_id = create_user_with_email(user_data)
         except Exception as e:
-            logging.error(f"Error checking for existing account: {e}")
-            return jsonify({"success": False, "error_message": "Failed to check for an existing account."}), 500
+            logging.error(f"Error creating user: {e}")
+            return jsonify({"success": False, "error_message": str(e)}), 500
 
-        # Create user in Supabase Auth
+        # Create Stripe Checkout Session
         try:
-            auth_response = supabase.auth.sign_up({"email": email, "password": password})
-            user_id = auth_response.user.id if auth_response.user else None
-            if not user_id:
-                raise Exception("Failed to create user in Supabase Auth.")
+            session = create_stripe_checkout_session(
+                user_id=user_id,
+                email=email,
+                subscription_plan=subscription_plan,
+                chat_session_id=chat_session_id
+            )
         except Exception as e:
-            logging.error(f"Auth creation failed: {e}")
-            return jsonify({"success": False, "error_message": "Error creating account."}), 500
+            logging.error(f"Error creating Stripe session: {e}")
+            # Optionally, delete the created user and profile if Stripe session creation fails
+            try:
+                supabase.auth.api.delete_user(user_id)
+                supabase.table("user_profiles").delete().eq("id", user_id).execute()
+                logging.info(f"Deleted user {user_id} due to Stripe session creation failure.")
+            except Exception as delete_error:
+                logging.error(f"Error deleting user {user_id}: {delete_error}")
+            return jsonify({"success": False, "error_message": "Failed to initiate payment."}), 500
 
-        # Insert user profile
-        try:
-            user_profile = {
-                "id": user_id,
-                "name": name,
-                "phone": phone,
-                "address": address,
-                "gpt_config": {"default_behavior": "friendly"},
-                "is_verified": False,
-                "chat_session_id": chat_session_id,  # Save chat_session_id for context
-            }
-            supabase.table("user_profiles").insert(user_profile).execute()
-        except Exception as e:
-            logging.error(f"Error inserting user profile: {e}")
-            return jsonify({"success": False, "error_message": "Failed to save user profile."}), 500
-
-        return jsonify({"success": True, "success_message": "Account created successfully!"}), 200
-    
-#------------- Create Stripe Session ---------------#
-    
-@app.route('/create-stripe-session', methods=['POST'])
-def create_stripe_session():
-    data = request.get_json()
-    email = data.get('email')
-    subscription_plan = data.get('subscription_plan')
-    chat_session_id = data.get('chat_session_id')  # Optional parameter
-
-    try:
-        # Identify if the plan includes a free week
-        free_week = subscription_plan == "annual_free_week"
-
-        # Pass chat_session_id only if it exists
-        session = create_stripe_checkout_session(
-            user_id=None,  # Optional, for linking users to your system
-            email=email,
-            subscription_plan=subscription_plan,
-            chat_session_id=chat_session_id  # Pass through if available
-        )
-
-        # Update Supabase to track free_week status
-        supabase.table("user_profiles").update({"free_week": free_week}).eq("email", email).execute()
-
-        # Return only the session ID to the frontend
-        return jsonify({"sessionId": session.id}), 200
-    except Exception as e:
-        logging.error(f"Error creating Stripe session: {e}")
-        return jsonify({"error": str(e)}), 500
+        # Return Stripe session URL for frontend to redirect
+        return jsonify({"success": True, "sessionUrl": session.url}), 200
 
 
-
+#--------------------------------------------#    
+#              Stripe Webhook                #
+#--------------------------------------------#
 
 @app.route('/stripe-webhook', methods=['POST'])
 def stripe_webhook():
@@ -855,76 +938,93 @@ def stripe_webhook():
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except ValueError:
+        logging.error("Invalid payload")
         return "Invalid payload", 400
     except stripe.error.SignatureVerificationError:
+        logging.error("Invalid signature")
         return "Invalid signature", 400
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        email = session.get("customer_email")
-        subscription_plan = session.get("metadata", {}).get("subscription_plan")
-        chat_session_id = session.get("metadata", {}).get("chat_session_id")
-        customer_id = session.get("customer")
+    event_type = event["type"]
+    data = event["data"]["object"]
 
-        try:
-            user_profile = {
-                "email": email,
-                "subscription_status": "active",
-                "subscription_plan": subscription_plan,
-                "chat_session_id": chat_session_id,
-                "customer_id": customer_id,
-            }
-            with supabase.transaction() as txn:
-                supabase.table("user_profiles").upsert(user_profile, transaction=txn)
-                txn.commit()
-        except Exception as e:
-            logging.error(f"Transaction failed: {e}")
-            return "Error saving user profile", 500
-
-    elif event["type"] == "invoice.payment_succeeded":
-        invoice = event["data"]["object"]
-        customer_id = invoice['customer']
-
-        try:
-            with supabase.transaction() as txn:
-                user_profile = supabase.table("user_profiles").select("*").eq("customer_id", customer_id).execute()
-                if not user_profile.data:
-                    logging.error(f"No user found for customer_id {customer_id}.")
-                    raise Exception("User not found")
-
-                supabase.table("user_profiles").update({"subscription_status": "active"}, transaction=txn).eq("customer_id", customer_id).execute()
-                txn.commit()
-        except Exception as e:
-            logging.error(f"Error updating subscription status for customer {customer_id}: {e}")
-            return "Error updating subscription status", 500
-
-    elif event["type"] == "customer.subscription.updated":
-        subscription = event["data"]["object"]
-        customer_id = subscription["customer"]
-        status = subscription["status"]
-        trial_end = subscription.get("trial_end")
-
-        try:
-            with supabase.transaction() as txn:
-                user_profile = supabase.table("user_profiles").select("*").eq("customer_id", customer_id).execute()
-                if not user_profile.data:
-                    logging.error(f"No user found for customer_id {customer_id}.")
-                    raise Exception("User not found")
-
-                updates = {"subscription_status": status}
-                if trial_end and trial_end < time.time():
-                    updates["free_week"] = False
-
-                supabase.table("user_profiles").update(updates, transaction=txn).eq("customer_id", customer_id).execute()
-                txn.commit()
-        except Exception as e:
-            logging.error(f"Error updating subscription status for customer {customer_id}: {e}")
-            return "Error updating subscription status", 500
-
-    else:
-        logging.info(f"Unhandled event type: {event['type']}")
+    try:
+        if event_type == "checkout.session.completed":
+            handle_checkout_session_completed(data)
+        elif event_type == "invoice.payment_succeeded":
+            handle_invoice_payment_succeeded(data)
+        elif event_type == "customer.subscription.updated":
+            handle_customer_subscription_updated(data)
+        else:
+            logging.info(f"Unhandled event type: {event_type}")
+    except Exception as e:
+        logging.error(f"Error processing event {event_type}: {e}", exc_info=True)
+        return "Error processing event", 500
 
     return "", 200
+
+def handle_checkout_session_completed(session):
+    email = session.get("customer_email")
+    subscription_plan = session.get("metadata", {}).get("subscription_plan")
+    chat_session_id = session.get("metadata", {}).get("chat_session_id")
+    customer_id = session.get("customer")
+    user_id = session.get("metadata", {}).get("user_id")
+
+    if not user_id:
+        raise Exception("No user_id found in session metadata.")
+
+    # Update user's subscription status and preserve chat_session_id
+    supabase.table("user_profiles").upsert({
+        "id": user_id,
+        "email": email,
+        "subscription_status": "active",
+        "subscription_plan": subscription_plan,
+        "chat_session_id": chat_session_id,
+        "customer_id": customer_id,
+        "updated_at": datetime.utcnow().isoformat()
+    }).execute()
+
+    # Generate verification token
+    token = secrets.token_urlsafe(32)
+    expiry = datetime.utcnow() + timedelta(hours=24)
+
+    # Store verification token
+    supabase.table("email_verifications").insert({
+        "user_id": user_id,
+        "token": token,
+        "expires_at": expiry.isoformat(),
+        "created_at": datetime.utcnow().isoformat()
+    }).execute()
+
+    # Send verification email via SMTP (Brevo)
+    send_verification_email(email, token)
+
+def handle_invoice_payment_succeeded(invoice):
+    customer_id = invoice['customer']
+
+    user_profile = supabase.table("user_profiles").select("*").eq("customer_id", customer_id).execute()
+    if not user_profile.data:
+        logging.error(f"No user found for customer_id {customer_id}.")
+        raise Exception("User not found")
+
+    supabase.table("user_profiles").update({"subscription_status": "active"}).eq("customer_id", customer_id).execute()
+
+def handle_customer_subscription_updated(subscription):
+    customer_id = subscription["customer"]
+    status = subscription["status"]
+    trial_end = subscription.get("trial_end")
+
+    updates = {"subscription_status": status}
+    if trial_end and trial_end < datetime.utcnow().timestamp():
+        updates["free_week"] = False
+
+    user_profile = supabase.table("user_profiles").select("*").eq("customer_id", customer_id).execute()
+    if not user_profile.data:
+        logging.error(f"No user found for customer_id {customer_id}.")
+        raise Exception("User not found")
+
+    supabase.table("user_profiles").update(updates).eq("customer_id", customer_id).execute()
+
+
 
 #-------------Stripe Redirect Routes-------------#
 
@@ -943,25 +1043,24 @@ def payment_success():
         if not customer_email:
             return "Missing customer email in session", 400
 
-        # Step 2: Check if the user already exists in Supabase
-        existing_user = supabase.table("user_profiles").select("*").eq("email", customer_email).execute()
-        if not existing_user.data:
-            # Step 3: Create the user in Supabase
-            logging.info(f"User with email {customer_email} not found. Creating new user.")
-            user_data = {
-                "email": customer_email,
-                "password": "TemporaryPassword123",  # Generate or specify a secure default password
-                "name": "New User",  # Adjust as needed, or prompt for the name earlier in the flow
-                "phone": None,
-                "address": None
-            }
-            creation_response = create_user_with_email(user_data)
-            if creation_response.get("error"):
-                return jsonify(creation_response), 500
-        else:
-            logging.info(f"User with email {customer_email} already exists in Supabase.")
+        # Step 2: Update the user's subscription status
+        user_profile = supabase.table("user_profiles").select("id").eq("email", customer_email).execute()
+        if not user_profile.data:
+            logging.error(f"User with email {customer_email} not found in user_profiles.")
+            return "User profile not found.", 404
 
-        # Step 4: Render the payment success page
+        user_id = user_profile.data[0]["id"]
+
+        # Update subscription status
+        supabase.table("user_profiles").update({
+            "subscription_status": "active",
+            "customer_id": session.get("customer"),
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", user_id).execute()
+
+        # Optionally, send a confirmation email or other post-payment actions
+
+        # Render the payment success page
         return render_template(
             'payment_success.html',
             session_id=session_id,
@@ -978,6 +1077,55 @@ def payment_success():
 def payment_cancel():
     chat_session_id = request.args.get('chat_session_id')
     return render_template('payment_cancel.html', chat_session_id=chat_session_id)
+
+#---------------Brevo Email Verify-------------------#
+
+@app.route('/verify-email', methods=['GET'])
+def verify_email():
+    token = request.args.get('token')
+    if not token:
+        return render_template('verify_email.html', error="Invalid or missing token."), 400
+
+    try:
+        # Retrieve verification entry
+        verification = supabase.table("email_verifications").select("*").eq("token", token).execute()
+        if not verification.data:
+            return render_template('verify_email.html', error="Invalid or expired token.", token=None), 400
+
+        entry = verification.data[0]
+        expiry = datetime.fromisoformat(entry['expires_at'])
+        if datetime.utcnow() > expiry:
+            return render_template('verify_email.html', error="Token has expired.", token=None), 400
+
+        user_id = entry['user_id']
+
+        # Check if user is already verified
+        user_profile = supabase.table("user_profiles").select("is_verified").eq("id", user_id).execute()
+        if user_profile.data and user_profile.data[0].get("is_verified"):
+            logging.info(f"User {user_id} is already verified.")
+            return render_template('verify_email.html', message="Your email is already verified."), 200
+
+        # Activate and verify the user profile
+        supabase.table("user_profiles").update({
+            "is_verified": True
+        }).eq("id", user_id).execute()
+
+        # Retrieve chat_session_id if needed for further actions
+        user_profile = supabase.table("user_profiles").select("chat_session_id").eq("id", user_id).execute()
+        chat_session_id = user_profile.data[0].get("chat_session_id") if user_profile.data else None
+
+        # Delete the verification token
+        supabase.table("email_verifications").delete().eq("token", token).execute()
+
+        # Optionally, redirect to a specific page based on chat_session_id
+        if chat_session_id:
+            return render_template('email_verified.html', chat_session_id=chat_session_id), 200
+        else:
+            return render_template('email_verified.html'), 200
+
+    except Exception as e:
+        logging.error(f"Error during email verification: {e}")
+        return render_template('verify_email.html', error="An error occurred during verification. Please try again.", token=None), 500
 
 
 
@@ -1086,18 +1234,24 @@ def logout():
         # Delete QuickBooks tokens
         supabase.table("quickbooks_tokens").delete().eq("user_id", user_id).execute()
 
+        # Delete the session_token cookie
+        resp = make_response(render_template("logout.html", message="You have been logged out successfully."))
+        resp.delete_cookie("session_token")
         logging.info("User logged out successfully.")
-        return render_template("logout.html", message="You have been logged out successfully.")
+        return resp
 
     except Exception as e:
         logging.error(f"Error during logout: {e}")
-        return render_template("logout.html", message="An error occurred during logout. Please try again.")
+        return render_template("logout.html", message="An error occurred during logout. Please try again."), 500
+
 
 
 
 # ------------------------------------------
 # ChatGPT-specific routes
 # ------------------------------------------
+
+from urllib.parse import quote
 
 @app.route('/oauth/start-for-chatgpt', methods=['GET'])
 def start_oauth_for_chatgpt():
@@ -1133,13 +1287,27 @@ def start_oauth_for_chatgpt():
                 logging.info(f"Reusing valid state for chatSessionId {chat_session_id}: {state}")
             else:
                 # State expired, generate new
-                state = generate_new_state(chat_session_id)
+                state = generate_random_state()
+                # Update the existing record with the new state and expiry
+                new_expiry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
+                supabase.table("chatgpt_oauth_states").update({
+                    "state": state,
+                    "expiry": new_expiry
+                }).eq("chat_session_id", chat_session_id).execute()
                 logging.info(f"Generated new state for expired session {chat_session_id}: {state}")
         else:
             # No row yet, generate new
-            state = generate_new_state(chat_session_id)
+            state = generate_random_state()
+            # Insert the new state associated with chat_session_id
+            expiry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
+            supabase.table("chatgpt_oauth_states").insert({
+                "chat_session_id": chat_session_id,
+                "state": state,
+                "expiry": expiry
+            }).execute()
             logging.info(f"Generated new state for new session {chat_session_id}: {state}")
 
+        # Construct QuickBooks OAuth URL
         quickbooks_oauth_url = (
             f"{AUTHORIZATION_BASE_URL}?"
             f"client_id={CLIENT_ID}&"
@@ -1155,6 +1323,7 @@ def start_oauth_for_chatgpt():
     except Exception as e:
         logging.error(f"Error in start_oauth_for_chatgpt: {e}", exc_info=True)
         return jsonify({"error": "An error occurred while processing the OAuth flow. Please try again later."}), 500
+
 
 
 
@@ -1263,6 +1432,7 @@ def get_session_status():
     except Exception as e:
         logging.error(f"Error in /session/status: {e}")
         return jsonify({"authenticated": False, "message": "An unexpected error occurred. Try again later."}), 500
+
 
 def refresh_access_token_for_chatgpt(chat_session_id, refresh_token):
     """
@@ -1920,6 +2090,9 @@ def debug_env():
     """
     Be careful not to expose real secrets in production logs/responses.
     """
+    if not DEV_MODE:
+        return jsonify({"error": "Not authorized."}), 403
+
     variables = {
         "SUPABASE_URL": os.getenv('SUPABASE_URL'),
         "SUPABASE_KEY": os.getenv('SUPABASE_KEY'),
@@ -1935,6 +2108,7 @@ def debug_env():
         key: ("*****" if "KEY" in key or "SECRET" in key else value)
         for key, value in variables.items()
     }, 200
+
 
 print(f"OpenAI API Key Loaded: {bool(openai_client.api_key)}")
 
