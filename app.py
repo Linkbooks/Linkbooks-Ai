@@ -61,15 +61,6 @@ for key in required_env_vars:
     print(f"{key}: {'*****' if 'KEY' in key or 'SECRET' in key else value}")
 
 # ------------------------------------------------------------------------------
-# Flask app initialization
-# ------------------------------------------------------------------------------
-
-app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY')
-if not app.secret_key:
-    raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
-
-# ------------------------------------------------------------------------------
 # Logging Configuration
 # ------------------------------------------------------------------------------
 
@@ -276,7 +267,8 @@ def send_verification_email(email, token):
 def create_user_with_email(user_data):
     """
     Creates a user in Supabase Auth and user_profiles.
-    Returns user_id on success or raises an exception on failure.
+    Raises an exception if any step fails.
+    Returns the user_id on success.
     """
     email = user_data.get("email")
     password = user_data.get("password")
@@ -284,16 +276,7 @@ def create_user_with_email(user_data):
     phone = user_data.get("phone")
     address = user_data.get("address")
 
-    # Step 1: Check if user already exists
-    try:
-        response = supabase.table("user_profiles").select("id").eq("email", email).execute()
-        if response.data:
-            raise Exception("An account with this email already exists.")
-    except Exception as e:
-        logging.error(f"Error checking for existing user: {e}")
-        raise Exception("Failed to verify if the user already exists.")
-
-    # Step 2: Create the user in Supabase Auth
+    # Step 1: Create the user in Supabase Auth
     try:
         auth_response = supabase.auth.sign_up({"email": email, "password": password})
         if auth_response.get('user'):
@@ -306,35 +289,33 @@ def create_user_with_email(user_data):
         logging.error(f"Error creating user in Supabase Auth: {e}")
         raise Exception("Failed to create user.")
 
-    # Step 3: Insert user profile
+    # Step 2: Insert additional user data
     try:
-        user_profile = {
-            "id": user_id,
-            "name": name,
-            "email": email,
-            "phone": phone,
-            "address": address,
-            "gpt_config": {"default_behavior": "friendly"},
-            "is_verified": False,
-            "subscription_status": "inactive",
-            "free_week": False,
-            "chat_session_id": user_data.get("chat_session_id"),  # Save chat_session_id for context
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
-        }
-        supabase.table("user_profiles").insert(user_profile).execute()
-        logging.info(f"User profile created successfully for {name}.")
+        profile_response = supabase.table('user_profiles').insert({
+            'id': user_id,
+            'name': name,
+            'email': email,
+            'phone': phone,
+            'address': address
+        }).execute()
+
+        if profile_response.data:
+            logging.info(f"User profile created successfully for {name}.")
+        else:
+            logging.error(f"Error creating user profile: {profile_response}")
+            raise Exception("Failed to create user profile.")
     except Exception as e:
-        logging.error(f"Error inserting user profile: {e}")
-        # Delete the created user in Supabase Auth if profile insertion fails
+        logging.error(f"Error creating user profile: {e}")
+        # Rollback user creation in Supabase Auth
         try:
             supabase.auth.api.delete_user(user_id)
-            logging.info(f"Deleted user {user_id} due to profile insertion failure.")
+            logging.info(f"Deleted user {user_id} due to profile creation failure.")
         except Exception as delete_error:
             logging.error(f"Error deleting user {user_id}: {delete_error}")
         raise Exception("Failed to create user profile.")
 
     return user_id
+
 
 
 def generate_session_token(user_id, email):
@@ -856,83 +837,62 @@ def login():
 @limiter.limit("10 per minute")
 def create_account():
     if request.method == 'GET':
-        # Render the Create Account page, passing chat_session_id and publishable key
+        # Render the Create Account page, passing only chat_session_id
         chat_session_id = request.args.get('chat_session_id', None)
-        publishable_key = os.getenv('STRIPE_PUBLISHABLE_KEY')  # Fetch from environment variables
         return render_template('create_account.html', 
-                               chat_session_id=chat_session_id, 
-                               publishable_key=publishable_key)
-
+                               chat_session_id=chat_session_id)
+    
     elif request.method == 'POST':
-        # Handle form submission
-        data = request.form
-        chat_session_id = data.get('chat_session_id', None)  # Preserve chat_session_id
-
-        name = data.get('name', '').strip()
-        email = data.get('email', '').strip().lower()
-        password = data.get('password')
-        confirm_password = data.get('confirm_password')
-        phone = data.get('phone', '').strip()
-        address = data.get('address', '').strip()
-        subscription_plan = data.get('subscription_plan')
-
-        # Validate inputs
-        if not email or not password or not confirm_password:
-            return jsonify({"success": False, "error_message": "Email and passwords are required."}), 400
-
-        if password != confirm_password:
-            return jsonify({"success": False, "error_message": "Passwords do not match."}), 400
-
-        if len(password) < 6:
-            return jsonify({"success": False, "error_message": "Password must be at least 6 characters long."}), 400
-
-        # Validate subscription plan
-        valid_plans = ["monthly_no_offer", "monthly_3mo_discount", "annual_free_week", "annual_further_discount"]
-        if subscription_plan not in valid_plans:
-            return jsonify({"success": False, "error_message": "Invalid subscription plan selected."}), 400
-
-        # Prepare user data
-        user_data = {
-            "email": email,
-            "password": password,
-            "name": name,
-            "phone": phone,
-            "address": address,
-            "chat_session_id": chat_session_id  # Save chat_session_id for context
-        }
-
-        # Create user using the helper function
         try:
+            data = request.form
+            chat_session_id = data.get('chat_session_id', None)  # Preserve chat_session_id
+
+            name = data.get('name', '').strip()
+            email = data.get('email', '').strip().lower()
+            password = data.get('password')
+            confirm_password = data.get('confirm_password')
+            phone = data.get('phone', '').strip()
+            address = data.get('address', '').strip()
+            subscription_plan = data.get('subscription_plan')
+
+            # Input Validation
+            if not email or not password or not confirm_password:
+                return jsonify({"success": False, "error_message": "Email and passwords are required."}), 400
+
+            if password != confirm_password:
+                return jsonify({"success": False, "error_message": "Passwords do not match."}), 400
+
+            if len(password) < 6:
+                return jsonify({"success": False, "error_message": "Password must be at least 6 characters long."}), 400
+
+            # Validate subscription plan
+            valid_plans = ["monthly_no_offer", "monthly_3mo_discount", "annual_free_week", "annual_further_discount"]
+            if subscription_plan not in valid_plans:
+                return jsonify({"success": False, "error_message": "Invalid subscription plan selected."}), 400
+
+            # Prepare user data
+            user_data = {
+                "email": email,
+                "password": password,
+                "name": name,
+                "phone": phone,
+                "address": address,
+                "chat_session_id": chat_session_id  # Save chat_session_id for context
+            }
+
+            # Create User
             user_id = create_user_with_email(user_data)
-        except Exception as e:
-            logging.error(f"Error creating user: {e}")
-            return jsonify({"success": False, "error_message": str(e)}), 500
 
-        # Create Stripe Checkout Session
-        try:
-            session = create_stripe_checkout_session(
-                user_id=user_id,
-                email=email,
-                subscription_plan=subscription_plan,
-                chat_session_id=chat_session_id
-            )
-        except Exception as e:
-            logging.error(f"Error creating Stripe session: {e}")
-            # Optionally, delete the created user and profile if Stripe session creation fails
-            try:
-                supabase.auth.api.delete_user(user_id)
-                supabase.table("user_profiles").delete().eq("id", user_id).execute()
-                logging.info(f"Deleted user {user_id} due to Stripe session creation failure.")
-            except Exception as delete_error:
-                logging.error(f"Error deleting user {user_id}: {delete_error}")
-            return jsonify({"success": False, "error_message": "Failed to initiate payment."}), 500
+            return jsonify({"success": True, "user_id": user_id}), 200
 
-        # Return Stripe session URL for frontend to redirect
-        return jsonify({"success": True, "sessionUrl": session.url}), 200
+        except Exception as e:
+            logging.error(f"Error in /create-account: {e}", exc_info=True)
+            return jsonify({"success": False, "error_message": "An unexpected error occurred."}), 500
+
 
 
 #--------------------------------------------#    
-#              Stripe Webhook                #
+#              Stripe Routes                #
 #--------------------------------------------#
 
 @app.route('/stripe-webhook', methods=['POST'])
@@ -1029,6 +989,36 @@ def handle_customer_subscription_updated(subscription):
         raise Exception("User not found")
 
     supabase.table("user_profiles").update(updates).eq("customer_id", customer_id).execute()
+
+
+@app.route('/create-stripe-session', methods=['POST'])
+@limiter.limit("10 per minute")
+def create_stripe_session():
+    try:
+        data = request.json  # Expecting JSON data
+        user_id = data.get('user_id')
+        email = data.get('email')
+        subscription_plan = data.get('subscription_plan')
+        chat_session_id = data.get('chat_session_id')  # Optional
+
+        # Validate inputs
+        if not user_id or not email or not subscription_plan:
+            return jsonify({"success": False, "error_message": "Missing required fields."}), 400
+
+        # Create Stripe Checkout Session
+        session = create_stripe_checkout_session(
+            user_id=user_id,
+            email=email,
+            subscription_plan=subscription_plan,
+            chat_session_id=chat_session_id
+        )
+
+        return jsonify({"success": True, "sessionUrl": session.url}), 200
+
+    except Exception as e:
+        logging.error(f"Error in /create-stripe-session: {e}")
+        return jsonify({"success": False, "error_message": "Failed to create Stripe session."}), 500
+
 
 
 

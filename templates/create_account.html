@@ -474,6 +474,9 @@
         // Show loading spinner and disable submit button
         submitButton.disabled = true;
         spinner.classList.remove("hidden");
+        spinner.setAttribute("aria-hidden", "false");
+        submitButton.textContent = "Processing...";
+
         form.classList.add("processing"); // Optional: style for processing
     
         // Gather form data
