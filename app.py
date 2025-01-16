@@ -994,11 +994,14 @@ def handle_customer_subscription_updated(subscription):
 @limiter.limit("10 per minute")
 def create_stripe_session():
     try:
+        logging.info(f"Received POST to /create-stripe-session: {request.json}")
         data = request.json  # Expecting JSON data
         user_id = data.get('user_id')
         email = data.get('email')
         subscription_plan = data.get('subscription_plan')
         chat_session_id = data.get('chat_session_id')  # Optional
+
+        logging.info(f"Creating Stripe session for user: {email}, plan: {subscription_plan}")
 
         # Validate inputs
         if not user_id or not email or not subscription_plan:
@@ -1012,7 +1015,8 @@ def create_stripe_session():
             chat_session_id=chat_session_id
         )
 
-        return jsonify({"success": True, "sessionUrl": session.url}), 200
+        logging.info(f"Stripe session created successfully: {session.id}")
+        return jsonify({"success": True, "sessionId": session.id}), 200
 
     except Exception as e:
         logging.error(f"Error in /create-stripe-session: {e}")
