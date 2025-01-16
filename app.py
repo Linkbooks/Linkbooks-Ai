@@ -931,13 +931,47 @@ def stripe_webhook():
 @app.route('/payment_success')
 def payment_success():
     session_id = request.args.get('session_id')
-    chat_session_id = request.args.get('chat_session_id')  # Retrieve chat_session_id if present
-    
+    chat_session_id = request.args.get('chat_session_id')  # Optional for session continuity
+
     if not session_id:
         return "Missing session ID", 400
 
-    # Optionally, you can use session_id to fetch session details from Stripe.
-    return render_template('payment_success.html', session_id=session_id, chat_session_id=chat_session_id)
+    try:
+        # Step 1: Retrieve the Stripe session
+        session = stripe.checkout.Session.retrieve(session_id)
+        customer_email = session.get("customer_email")
+        if not customer_email:
+            return "Missing customer email in session", 400
+
+        # Step 2: Check if the user already exists in Supabase
+        existing_user = supabase.table("user_profiles").select("*").eq("email", customer_email).execute()
+        if not existing_user.data:
+            # Step 3: Create the user in Supabase
+            logging.info(f"User with email {customer_email} not found. Creating new user.")
+            user_data = {
+                "email": customer_email,
+                "password": "TemporaryPassword123",  # Generate or specify a secure default password
+                "name": "New User",  # Adjust as needed, or prompt for the name earlier in the flow
+                "phone": None,
+                "address": None
+            }
+            creation_response = create_user_with_email(user_data)
+            if creation_response.get("error"):
+                return jsonify(creation_response), 500
+        else:
+            logging.info(f"User with email {customer_email} already exists in Supabase.")
+
+        # Step 4: Render the payment success page
+        return render_template(
+            'payment_success.html',
+            session_id=session_id,
+            chat_session_id=chat_session_id
+        )
+
+    except Exception as e:
+        logging.error(f"Error in payment_success route: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/payment_cancel')
