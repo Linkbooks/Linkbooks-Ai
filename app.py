@@ -915,7 +915,7 @@ def create_account():
                 "name": name,
                 "phone": phone,
                 "address": address,
-                'subscription_status': 'pending',  # Set to 'pending' initially
+                'subscription_status': 'inactive',  # Set to 'pending' initially
                 "gpt_config": {"default_behavior": "friendly"},
                 "is_verified": False,
             }
@@ -971,7 +971,7 @@ def subscriptions():
             # User profile not found, redirect to create account
             return redirect(url_for('create_account'))
         
-        # Render the subscription selection page
+        # Render the subscription selection page (if subscription status is set to inactive)
         return render_template(
             'subscriptions.html', 
             email=email, 
