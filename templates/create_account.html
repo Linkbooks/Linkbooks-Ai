@@ -215,36 +215,23 @@
           method: "POST",
           body: formData,
         })
-          .then((response) => {
-            if (!response.ok) {
-              return response.json().then((data) => {
-                throw data;
-              });
-            }
-            return response.json();
-          })
-          .then((data) => {
-            if (data.success) {
-              window.location.href = data.next_url;
-            } else {
-              errorMessageDiv.classList.remove("hidden");
-              errorText.textContent = data.error_message;
-            }
-          })
-          .catch((error) => {
-            spinner.classList.add("hidden");
-            submitButton.disabled = false;
-            form.classList.remove("processing");
-
-            if (error && error.error_message) {
-              errorMessageDiv.classList.remove("hidden");
-              errorText.textContent = error.error_message;
-            } else {
-              errorMessageDiv.classList.remove("hidden");
-              errorText.textContent = "An unexpected error occurred. Please try again.";
-            }
-            console.error("Error:", error);
-          });
+        .then((response) => {
+          if (response.redirected) {
+            // Handle HTTP redirect response
+            window.location.href = response.url;
+            return;
+          }
+          if (!response.ok) {
+            return response.text().then((text) => {
+              throw new Error(text);
+            });
+          }
+          return response.json();
+        })
+        .catch((error) => {
+          console.error("Unexpected error:", error.message || error);
+          showError("An unexpected error occurred.");
+        });
       });
     });
   </script>
