@@ -111,6 +111,7 @@
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const form = document.getElementById('subscriptions-form');
+  
       form.addEventListener('submit', function (e) {
         e.preventDefault();
   
@@ -136,10 +137,12 @@
         })
           .then(response => response.json())
           .then(data => {
-            if (data.sessionId) {
-              window.location.href = `https://checkout.stripe.com/pay/${data.sessionId}`;
+            // Here we check for data.checkoutUrl
+            // which your server will return after creating the Checkout Session
+            if (data.checkoutUrl) {
+              window.location.href = data.checkoutUrl;
             } else {
-              alert('Error creating Stripe session.');
+              alert('Error creating Stripe session (no checkoutUrl).');
             }
           })
           .catch(error => console.error('Error:', error));

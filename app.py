@@ -954,8 +954,8 @@ def subscriptions():
                 chat_session_id=chat_session_id
             )
 
-            # Return the sessionId so the front-end can redirect to Stripe Checkout
-            return jsonify({'sessionId': stripe_session.id}), 200
+            # Open the Stripe Checkout
+            return jsonify({'checkoutUrl': stripe_session.url}), 200
 
         except Exception as e:
             logging.error(f"Stripe session creation failed: {e}, chat_session_id: {chat_session_id}")
