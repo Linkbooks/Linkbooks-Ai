@@ -843,7 +843,6 @@ def create_account():
         # Handle form submission
         data = request.form
         chat_session_id = data.get('chat_session_id', None)  # Preserve chat_session_id
-
         name = data.get('name', '').strip()
         email = data.get('email', '').strip().lower()
         password = data.get('password')
@@ -866,7 +865,7 @@ def create_account():
             if response.data:
                 return jsonify({"success": False, "error_message": "An account with this email already exists."}), 400
         except Exception as e:
-            logging.error(f"Error checking for existing account: {e}")
+            logging.error(f"Error checking for existing account: {e}, chat_session_id: {chat_session_id}")
             return jsonify({"success": False, "error_message": "Failed to check for an existing account."}), 500
 
         # Create user in Supabase Auth
@@ -876,7 +875,7 @@ def create_account():
             if not user_id:
                 raise Exception("Failed to create user in Supabase Auth.")
         except Exception as e:
-            logging.error(f"Auth creation failed: {e}")
+            logging.error(f"Auth creation failed: {e}, chat_session_id: {chat_session_id}")
             return jsonify({"success": False, "error_message": "Error creating account."}), 500
 
         # Insert user profile
@@ -888,21 +887,18 @@ def create_account():
                 "address": address,
                 "gpt_config": {"default_behavior": "friendly"},
                 "is_verified": False,
-                "chat_session_id": chat_session_id,  # Save chat_session_id for context
             }
             supabase.table("user_profiles").insert(user_profile).execute()
         except Exception as e:
-            logging.error(f"Error inserting user profile: {e}")
+            logging.error(f"Error inserting user profile: {e}, chat_session_id: {chat_session_id}")
             return jsonify({"success": False, "error_message": "Failed to save user profile."}), 500
 
-        # Store user data in session
+        # Save email and chat_session_id in session (if provided)
         session['email'] = email
         if chat_session_id:
             session['chat_session_id'] = chat_session_id
 
-        # Return JSON with the next URL
-        next_url = url_for('subscriptions')
-        return jsonify({"success": True, "next_url": next_url}), 200
+        return redirect(url_for('subscriptions'))
 
 
 
@@ -913,16 +909,13 @@ def create_account():
 @app.route('/subscriptions', methods=['GET', 'POST'])
 def subscriptions():
     if request.method == 'GET':
-        email = session.get('email')
-        chat_session_id = session.get('chat_session_id', None)
+        email = session.get('email') # Retrieve email from session
+        chat_session_id = session.get('chat_session_id', None) # Retrieve chat_session_id if set
 
         if not email:
-            return jsonify({"error": "Session expired. Please log in again."}), 401
-
-
-        if not email:
-            return jsonify({"error": "Email is required"}), 400
+            return redirect(url_for('create_account'))  # Redirect if no email in session
         
+        # Render the subscriptions page
         return render_template(
             'subscriptions.html', 
             email=email, 
@@ -952,11 +945,12 @@ def subscriptions():
                     'quantity': 1,
                 }],
                 mode='payment',
-                success_url=url_for('success', email=email, _external=True),
-                cancel_url=url_for('subscriptions', email=email, _external=True),
+                success_url=url_for('success', email=email, chat_session_id=chat_session_id, _external=True),
+                cancel_url=url_for('subscriptions', email=email, chat_session_id=chat_session_id, _external=True),
             )
             return jsonify({'sessionId': session.id})
         except Exception as e:
+            logging.error(f"Stripe session creation failed: {e}, chat_session_id: {chat_session_id}")
             return jsonify({'error': str(e)}), 500
 
 
