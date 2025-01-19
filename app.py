@@ -116,6 +116,30 @@ def cleanup_expired_verifications():
     except Exception as e:
         logging.error(f"Error cleaning up expired email verifications: {e}")
 
+def cleanup_expired_verifications_and_pending_users():
+    """
+    Deletes expired email verifications and pending users.
+    """
+    try:
+        now = datetime.utcnow().isoformat()
+
+        # Delete expired email verifications
+        supabase.table("email_verifications").delete().lt("expires_at", now).execute()
+        logging.info("Expired email verifications cleaned up.")
+
+        # Delete users with 'pending' subscription status and expired verifications
+        expired_cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        expired_users = supabase.table("user_profiles").select("id").eq("subscription_status", "pending").lt("created_at", expired_cutoff).execute()
+
+        for user in expired_users.data:
+            user_id = user['id']
+            supabase.auth.api.delete_user(user_id)
+            supabase.table("user_profiles").delete().eq("id", user_id).execute()
+            logging.info(f"Deleted pending user {user_id} due to expired verification.")
+    except Exception as e:
+        logging.error(f"Error during cleanup: {e}")
+
+
 def cleanup_inactive_users():
     """
     Deletes inactive user accounts created over 24 hours ago.
@@ -137,6 +161,7 @@ def log_scheduler_error(event):
 # Schedule cleanup jobs
 scheduler.add_job(cleanup_expired_states, 'interval', hours=1, id='cleanup_expired_states')
 scheduler.add_job(cleanup_expired_verifications, 'cron', hour=0, id='cleanup_expired_verifications')
+scheduler.add_job(cleanup_expired_verifications_and_pending_users, 'interval', hours=1, id='cleanup_expired_verifications_and_pending_users')
 scheduler.add_job(cleanup_inactive_users, 'cron', hour=1, id='cleanup_inactive_users')
 
 # Register error listener
@@ -295,7 +320,8 @@ def create_user_with_email(user_data):
             'name': name,
             'email': email,
             'phone': phone,
-            'address': address
+            'address': address,
+            'subscription_status': 'pending',  # Set to 'pending' initially
         }).execute()
 
         if profile_response.data:
@@ -889,13 +915,21 @@ def create_account():
                 "name": name,
                 "phone": phone,
                 "address": address,
+                'subscription_status': 'pending',  # Set to 'pending' initially
                 "gpt_config": {"default_behavior": "friendly"},
                 "is_verified": False,
             }
             supabase.table("user_profiles").insert(user_profile).execute()
         except Exception as e:
             logging.error(f"Error inserting user profile: {e}, chat_session_id: {chat_session_id}")
+            # Rollback: Delete the user from Supabase Auth to prevent orphaned Auth users
+            try:
+                supabase.auth.api.delete_user(user_id)
+                logging.info(f"Deleted user {user_id} due to profile creation failure.")
+            except Exception as delete_error:
+                logging.error(f"Error deleting user {user_id}: {delete_error}")
             return jsonify({"success": False, "error_message": "Failed to save user profile."}), 500
+
 
         # Save email and chat_session_id in session (if provided)
         session['email'] = email
@@ -921,6 +955,22 @@ def subscriptions():
             # If we don’t have an email in session, require account creation:
             return redirect(url_for('create_account'))  # Redirect if no email in session
         
+        # Check if the user already has a subscription
+        user_profile = supabase.table("user_profiles").select("subscription_status").eq("email", email).execute()
+        if user_profile.data:
+            subscription_status = user_profile.data[0].get("subscription_status")
+            if subscription_status == "active":
+                return redirect(url_for('dashboard'))
+            elif subscription_status == "pending":
+                # Inform the user that their payment is being processed
+                return render_template('subscriptions.html', email=email, chat_session_id=chat_session_id, message="Your payment is being processed. Please check your email for verification.")
+            elif subscription_status == "inactive":
+                # Allow the user to select a different plan
+                pass  # Continue to render the subscription selection page
+        else:
+            # User profile not found, redirect to create account
+            return redirect(url_for('create_account'))
+        
         # Render the subscription selection page
         return render_template(
             'subscriptions.html', 
@@ -938,12 +988,19 @@ def subscriptions():
         if not email or not subscription_plan:
             return jsonify({'error': 'Email and subscription plan are required'}), 400
 
-        # Look up user_id by email (Adapt if you store user_id differently)
+        # Look up user_id by email
         user_profile = supabase.table("user_profiles").select("id").eq("email", email).execute()
         if not user_profile.data:
             return jsonify({'error': 'No user found with that email'}), 404
 
         user_id = user_profile.data[0]['id']
+        subscription_status = user_profile.data[0].get('subscription_status')
+
+        if subscription_status == "active":
+            return jsonify({'error': 'You already have an active subscription.'}), 400
+        elif subscription_status == "pending":
+            return jsonify({'error': 'Your payment is being processed. Please wait or contact support.'}), 400
+
 
         try:
             # Use your helper function to create the Stripe session
@@ -954,7 +1011,7 @@ def subscriptions():
                 chat_session_id=chat_session_id
             )
 
-            # Open the Stripe Checkout
+            # Return the 'url' property so the front-end can redirect to Stripe Checkout
             return jsonify({'checkoutUrl': stripe_session.url}), 200
 
         except Exception as e:
@@ -1035,6 +1092,39 @@ def handle_checkout_session_completed(session):
     # Send verification email via SMTP (Brevo)
     send_verification_email(email, token)
 
+
+def handle_checkout_session_failed(session):
+    """
+    Handle failed checkout sessions.
+    """
+    email = session.get("customer_email")
+    user_id = session.get("metadata", {}).get("user_id")
+    chat_session_id = session.get("metadata", {}).get("chat_session_id")
+
+    if not user_id:
+        logging.error("No user_id found in session metadata for failed payment.")
+        return
+
+    # Option A: Delete the user if not verified
+    user_profile = supabase.table("user_profiles").select("is_verified").eq("id", user_id).execute()
+    if user_profile.data and not user_profile.data[0].get("is_verified"):
+        try:
+            supabase.auth.api.delete_user(user_id)
+            supabase.table("user_profiles").delete().eq("id", user_id).execute()
+            logging.info(f"Deleted unverified user {user_id} due to failed payment.")
+        except Exception as e:
+            logging.error(f"Error deleting user {user_id}: {e}")
+    else:
+        # Option B: Update subscription_status to 'inactive'
+        try:
+            supabase.table("user_profiles").update({
+                "subscription_status": "inactive",
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", user_id).execute()
+            logging.info(f"Set subscription_status to 'inactive' for user {user_id} due to failed payment.")
+        except Exception as e:
+            logging.error(f"Error updating subscription status for user {user_id}: {e}")
+
 def handle_invoice_payment_succeeded(invoice):
     customer_id = invoice['customer']
 
@@ -1108,40 +1198,21 @@ def payment_success():
         return "Missing session ID", 400
 
     try:
-        # Step 1: Retrieve the Stripe session
+        # Optionally, retrieve session details for display
         session = stripe.checkout.Session.retrieve(session_id)
         customer_email = session.get("customer_email")
-        if not customer_email:
-            return "Missing customer email in session", 400
-
-        # Step 2: Update the user's subscription status
-        user_profile = supabase.table("user_profiles").select("id").eq("email", customer_email).execute()
-        if not user_profile.data:
-            logging.error(f"User with email {customer_email} not found in user_profiles.")
-            return "User profile not found.", 404
-
-        user_id = user_profile.data[0]["id"]
-
-        # Update subscription status
-        supabase.table("user_profiles").update({
-            "subscription_status": "active",
-            "customer_id": session.get("customer"),
-            "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", user_id).execute()
-
-        # Optionally, send a confirmation email or other post-payment actions
 
         # Render the payment success page
         return render_template(
             'payment_success.html',
             session_id=session_id,
-            chat_session_id=chat_session_id
+            chat_session_id=chat_session_id,
+            email=customer_email
         )
 
     except Exception as e:
         logging.error(f"Error in payment_success route: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route('/payment_cancel')

@@ -6,19 +6,19 @@
     <title>Payment Unsuccessful</title>
     <script>
         // Preserve chat_session_id in the redirect
-        function redirectToCreateAccount() {
+        function redirectToSubscriptions() {
             const urlParams = new URLSearchParams(window.location.search);
             const chatSessionId = urlParams.get('chat_session_id');
             const redirectUrl = chatSessionId 
-                ? `/create-account?chat_session_id=${chatSessionId}` 
-                : '/create-account';
+                ? `/subscriptions?chat_session_id=${chatSessionId}` 
+                : '/subscriptions';
             window.location.href = redirectUrl;
         }
     </script>
 </head>
 <body>
-    <h1>Thank You for Trying!</h1>
-    <p>Your payment has failed. Please try again.</p>
-    <button onclick="redirectToCreateAccount()">Back to Create Account</button>
+    <h1>Payment Unsuccessful</h1>
+    <p>Your payment has failed. Please try selecting a different subscription plan.</p>
+    <button onclick="redirectToSubscriptions()">Back to Subscription Plans</button>
 </body>
 </html>

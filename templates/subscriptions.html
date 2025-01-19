@@ -111,6 +111,11 @@
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const form = document.getElementById('subscriptions-form');
+      const message = "{{ message }}";  // Pass any messages from the server
+
+      if (message) {
+        alert(message);
+      }
   
       form.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -141,12 +146,14 @@
             // which your server will return after creating the Checkout Session
             if (data.checkoutUrl) {
               window.location.href = data.checkoutUrl;
+            } else if (data.error) {
+              alert(data.error);
             } else {
-              alert('Error creating Stripe session (no checkoutUrl).');
+              alert('Error creating Stripe session.');
             }
           })
           .catch(error => console.error('Error:', error));
       });
     });
-  </script>
+</script>
   
