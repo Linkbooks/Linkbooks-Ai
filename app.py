@@ -895,14 +895,16 @@ def create_account():
             logging.error(f"Error inserting user profile: {e}")
             return jsonify({"success": False, "error_message": "Failed to save user profile."}), 500
 
-        # Redirect to subscriptions page after successful account creation
-        return redirect(
-            url_for(
-                'subscriptions', 
-                email=email, 
-                chat_session_id=chat_session_id
-            )
-        )
+        # Store user data in session
+        session['email'] = email
+        if chat_session_id:
+            session['chat_session_id'] = chat_session_id
+
+        # Return JSON with the next URL
+        next_url = url_for('subscriptions')
+        return jsonify({"success": True, "next_url": next_url}), 200
+
+
 
 #--------------------------------------------#
 #              Subscriptions                 #
@@ -911,8 +913,12 @@ def create_account():
 @app.route('/subscriptions', methods=['GET', 'POST'])
 def subscriptions():
     if request.method == 'GET':
-        email = request.args.get('email')
-        chat_session_id = request.args.get('chat_session_id', None)
+        email = session.get('email')
+        chat_session_id = session.get('chat_session_id', None)
+
+        if not email:
+            return jsonify({"error": "Session expired. Please log in again."}), 401
+
 
         if not email:
             return jsonify({"error": "Email is required"}), 400
