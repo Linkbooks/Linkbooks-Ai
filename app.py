@@ -833,61 +833,125 @@ def login():
 # Create Account Routes
 # ------------------------------------------
 @app.route('/create-account', methods=['GET', 'POST'])
-@limiter.limit("10 per minute")
 def create_account():
     if request.method == 'GET':
-        # Render the Create Account page, passing only chat_session_id
+        # Render the Create Account page, passing chat_session_id
         chat_session_id = request.args.get('chat_session_id', None)
-        return render_template('create_account.html', 
-                               chat_session_id=chat_session_id)
-    
+        return render_template('create_account.html', chat_session_id=chat_session_id)
+
     elif request.method == 'POST':
+        # Handle form submission
+        data = request.form
+        chat_session_id = data.get('chat_session_id', None)  # Preserve chat_session_id
+
+        name = data.get('name', '').strip()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password')
+        confirm_password = data.get('confirm_password')
+        phone = data.get('phone', '').strip()
+        address = data.get('address', '').strip()
+
+        if not email or not password or not confirm_password:
+            return jsonify({"success": False, "error_message": "Email and passwords are required."}), 400
+
+        if password != confirm_password:
+            return jsonify({"success": False, "error_message": "Passwords do not match."}), 400
+
+        if len(password) < 6:
+            return jsonify({"success": False, "error_message": "Password must be at least 6 characters long."}), 400
+
+        # Check if user already exists
         try:
-            data = request.form
-            chat_session_id = data.get('chat_session_id', None)  # Preserve chat_session_id
+            response = supabase.table("users").select("id").eq("email", email).execute()
+            if response.data:
+                return jsonify({"success": False, "error_message": "An account with this email already exists."}), 400
+        except Exception as e:
+            logging.error(f"Error checking for existing account: {e}")
+            return jsonify({"success": False, "error_message": "Failed to check for an existing account."}), 500
 
-            name = data.get('name', '').strip()
-            email = data.get('email', '').strip().lower()
-            password = data.get('password')
-            confirm_password = data.get('confirm_password')
-            phone = data.get('phone', '').strip()
-            address = data.get('address', '').strip()
-            subscription_plan = data.get('subscription_plan')
+        # Create user in Supabase Auth
+        try:
+            auth_response = supabase.auth.sign_up({"email": email, "password": password})
+            user_id = auth_response.user.id if auth_response.user else None
+            if not user_id:
+                raise Exception("Failed to create user in Supabase Auth.")
+        except Exception as e:
+            logging.error(f"Auth creation failed: {e}")
+            return jsonify({"success": False, "error_message": "Error creating account."}), 500
 
-            # Input Validation
-            if not email or not password or not confirm_password:
-                return jsonify({"success": False, "error_message": "Email and passwords are required."}), 400
-
-            if password != confirm_password:
-                return jsonify({"success": False, "error_message": "Passwords do not match."}), 400
-
-            if len(password) < 6:
-                return jsonify({"success": False, "error_message": "Password must be at least 6 characters long."}), 400
-
-            # Validate subscription plan
-            valid_plans = ["monthly_no_offer", "monthly_3mo_discount", "annual_free_week", "annual_further_discount"]
-            if subscription_plan not in valid_plans:
-                return jsonify({"success": False, "error_message": "Invalid subscription plan selected."}), 400
-
-            # Prepare user data
-            user_data = {
-                "email": email,
-                "password": password,
+        # Insert user profile
+        try:
+            user_profile = {
+                "id": user_id,
                 "name": name,
                 "phone": phone,
                 "address": address,
-                "chat_session_id": chat_session_id  # Save chat_session_id for context
+                "gpt_config": {"default_behavior": "friendly"},
+                "is_verified": False,
+                "chat_session_id": chat_session_id,  # Save chat_session_id for context
             }
-
-            # Create User
-            user_id = create_user_with_email(user_data)
-
-            return jsonify({"success": True, "user_id": user_id}), 200
-
+            supabase.table("user_profiles").insert(user_profile).execute()
         except Exception as e:
-            logging.error(f"Error in /create-account: {e}", exc_info=True)
-            return jsonify({"success": False, "error_message": "An unexpected error occurred."}), 500
+            logging.error(f"Error inserting user profile: {e}")
+            return jsonify({"success": False, "error_message": "Failed to save user profile."}), 500
 
+        # Redirect to subscriptions page after successful account creation
+        return redirect(
+            url_for(
+                'subscriptions', 
+                email=email, 
+                chat_session_id=chat_session_id
+            )
+        )
+
+#--------------------------------------------#
+#              Subscriptions                 #
+#--------------------------------------------#
+
+@app.route('/subscriptions', methods=['GET', 'POST'])
+def subscriptions():
+    if request.method == 'GET':
+        email = request.args.get('email')
+        chat_session_id = request.args.get('chat_session_id', None)
+
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
+        
+        return render_template(
+            'subscriptions.html', 
+            email=email, 
+            chat_session_id=chat_session_id
+        )
+    
+    elif request.method == 'POST':
+        data = request.json
+        email = data.get('email')
+        subscription_plan = data.get('subscription_plan')
+        chat_session_id = data.get('chat_session_id', None)
+
+        if not email or not subscription_plan:
+            return jsonify({'error': 'Email and subscription plan are required'}), 400
+
+        try:
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[{
+                    'price_data': {
+                        'currency': 'gbp',
+                        'product_data': {
+                            'name': subscription_plan,
+                        },
+                        'unit_amount': 1000,  # Replace with dynamic amount
+                    },
+                    'quantity': 1,
+                }],
+                mode='payment',
+                success_url=url_for('success', email=email, _external=True),
+                cancel_url=url_for('subscriptions', email=email, _external=True),
+            )
+            return jsonify({'sessionId': session.id})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 
 #--------------------------------------------#    

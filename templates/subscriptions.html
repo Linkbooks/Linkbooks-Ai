@@ -1,0 +1,149 @@
+<form id="subscriptions-form" method="POST">
+    <input type="hidden" id="email" value="{{ email }}">
+    <input type="hidden" id="chat-session-id" value="{{ chat_session_id }}">
+  
+    <h2>Select Your Subscription Plan</h2>
+    <!-- Subscription Options -->
+    <div id="subscription-options" class="subscription-options">
+        <!-- MONTHLY PLAN -->
+        <div class="plan-box" data-plan="monthly">
+          <h3>Monthly Plan</h3>
+          <p class="price">£10/month</p>
+          <div class="offers-section">
+            <p><strong>Offers Included:</strong></p>
+            <div>
+              <label>
+                <input type="radio" name="offer" value="monthly_3mo_discount" required />
+                £5/month for 3 months (£15 upfront for the first 3 months)
+              </label>
+              <br />
+              <label>
+                <input type="radio" name="offer" value="monthly_no_offer" required />
+                No offer: £10/month, cancel anytime
+              </label>
+            </div>
+          </div>
+          <!-- Details Sections -->
+          <div class="plan-details" id="monthly_3mo_discount-details">
+            <p class="tc-content">
+              <strong>Monthly Plan Terms:</strong>
+              <br />
+              You will pay £15 upfront for the first 3 months. After that, your subscription renews at £10/month unless canceled. Minimum commitment of 3 months.
+            </p>
+            <p class="tc-content">
+              <strong>Cancellation Policy:</strong>
+              <br />
+              Cancellations apply after the 3-month period for this offer.
+            </p>
+            <a class="tc-link" href="#">Read Terms and Conditions</a>
+          </div>
+          <div class="plan-details" id="monthly_no_offer-details">
+            <p class="tc-content">
+              <strong>No Offer Terms:</strong>
+              <br />
+              You pay £10/month and can cancel anytime.
+            </p>
+            <a class="tc-link" href="#">Read Terms and Conditions</a>
+          </div>
+        </div>
+      
+        <!-- ANNUAL PLAN -->
+        <div class="plan-box" data-plan="annual">
+          <h3>Annual Plan</h3>
+          <p class="price">£5/month (billed £60/year)</p>
+          <div class="offers-section">
+            <p><strong>Offers Included:</strong></p>
+            <div>
+              <label>
+                <input
+                  type="radio"
+                  name="offer"
+                  value="annual_free_week"
+                  required
+                />
+                Free Week: Try for 7 days, then pay £60/year
+              </label>
+              <br />
+              <label>
+                <input
+                  type="radio"
+                  name="offer"
+                  value="annual_discount_no_free_week"
+                  required
+                />
+                Further Discount: £55/year (Save an extra £5 if you choose to pay upfront)
+              </label>
+            </div>
+          </div>
+          <!-- Details Sections -->
+          <div class="plan-details" id="annual_free_week-details">
+            <p class="tc-content">
+              <strong>Free Week Offer Terms:</strong>
+              <br />
+              If you select the Free Week offer, your subscription includes a 7-day free trial. After the trial, you will be billed £60 for the year. You can cancel during the free week to avoid charges.
+            </p>
+            <p class="tc-content">
+              <strong>Cancellation Policy:</strong>
+              <br />
+              Cancellations must occur before the trial period ends to avoid charges. After billing, cancellations are effective at the end of the billing cycle.
+            </p>
+            <a class="tc-link" href="#">Read Terms and Conditions</a>
+          </div>
+          <div class="plan-details" id="annual_discount_no_free_week-details">
+            <p class="tc-content">
+              <strong>Further Discount Terms:</strong>
+              <br />
+              If you select the Further Discount option, you will pay £55 upfront for the year, saving an additional £5. This plan does not include a free week but offers immediate savings.
+            </p>
+            <p class="tc-content">
+              <strong>Cancellation Policy:</strong>
+              <br />
+              This option is billed upfront, and the payment is non-refundable. However, you can cancel anytime to prevent renewal for the next billing cycle.
+            </p>
+            <a class="tc-link" href="#">Read Terms and Conditions</a>
+          </div>
+        </div>
+
+  
+    <button id="proceed-to-checkout" type="submit" class="button">Proceed to Checkout</button>
+  </form>
+  
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const form = document.getElementById('subscriptions-form');
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+  
+        const email = document.getElementById('email').value;
+        const chatSessionId = document.getElementById('chat-session-id').value;
+        const selectedPlan = document.querySelector('input[name="offer"]:checked');
+  
+        if (!selectedPlan) {
+          alert('Please select a subscription plan.');
+          return;
+        }
+  
+        fetch('/subscriptions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: email,
+            subscription_plan: selectedPlan.value,
+            chat_session_id: chatSessionId || null,
+          }),
+        })
+          .then(response => response.json())
+          .then(data => {
+            if (data.sessionId) {
+              window.location.href = `https://checkout.stripe.com/pay/${data.sessionId}`;
+            } else {
+              alert('Error creating Stripe session.');
+            }
+          })
+          .catch(error => console.error('Error:', error));
+      });
+    });
+  </script>
+  
