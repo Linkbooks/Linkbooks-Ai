@@ -576,6 +576,10 @@ def validate_state(state):
 #--------------------------------------------------
 
 def create_stripe_checkout_session(user_id, email, subscription_plan, chat_session_id=None):
+    """
+    Creates and returns a Stripe Checkout Session 
+    for the given user and subscription plan.
+    """
     # Map subscription plans to Stripe Price IDs and trial durations
     plan_details = {
         "monthly_no_offer": {"price_id": "price_1QhXfxDi1nqWbBYc76q14cWL", "trial_days": 0},
@@ -611,7 +615,7 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, chat_sessi
             subscription_data["trial_period_days"] = trial_period_days  # Include trial only for eligible plans
 
         # Create the Stripe Checkout Session
-        session = stripe.checkout.Session.create(
+        stripe_session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
@@ -625,7 +629,7 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, chat_sessi
                 "user_id": user_id  # Include user_id for webhook association
             }
         )
-        return session  # Return the full session object
+        return stripe_session  # Return the full stripe session object
     
     except stripe.error.StripeError as e:
         logging.error(f"Stripe API error: {e}")
@@ -909,13 +913,15 @@ def create_account():
 @app.route('/subscriptions', methods=['GET', 'POST'])
 def subscriptions():
     if request.method == 'GET':
+        # Retrieve from Flask session
         email = session.get('email') # Retrieve email from session
         chat_session_id = session.get('chat_session_id', None) # Retrieve chat_session_id if set
 
         if not email:
+            # If we don’t have an email in session, require account creation:
             return redirect(url_for('create_account'))  # Redirect if no email in session
         
-        # Render the subscriptions page
+        # Render the subscription selection page
         return render_template(
             'subscriptions.html', 
             email=email, 
@@ -923,6 +929,7 @@ def subscriptions():
         )
     
     elif request.method == 'POST':
+        # Receive JSON data from front-end
         data = request.json
         email = data.get('email')
         subscription_plan = data.get('subscription_plan')
@@ -931,24 +938,25 @@ def subscriptions():
         if not email or not subscription_plan:
             return jsonify({'error': 'Email and subscription plan are required'}), 400
 
+        # Look up user_id by email (Adapt if you store user_id differently)
+        user_profile = supabase.table("user_profiles").select("id").eq("email", email).execute()
+        if not user_profile.data:
+            return jsonify({'error': 'No user found with that email'}), 404
+
+        user_id = user_profile.data[0]['id']
+
         try:
-            session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
-                line_items=[{
-                    'price_data': {
-                        'currency': 'gbp',
-                        'product_data': {
-                            'name': subscription_plan,
-                        },
-                        'unit_amount': 1000,  # Replace with dynamic amount
-                    },
-                    'quantity': 1,
-                }],
-                mode='payment',
-                success_url=url_for('success', email=email, chat_session_id=chat_session_id, _external=True),
-                cancel_url=url_for('subscriptions', email=email, chat_session_id=chat_session_id, _external=True),
+            # Use your helper function to create the Stripe session
+            stripe_session = create_stripe_checkout_session(
+                user_id=user_id,
+                email=email,
+                subscription_plan=subscription_plan,
+                chat_session_id=chat_session_id
             )
-            return jsonify({'sessionId': session.id})
+
+            # Return the sessionId so the front-end can redirect to Stripe Checkout
+            return jsonify({'sessionId': stripe_session.id}), 200
+
         except Exception as e:
             logging.error(f"Stripe session creation failed: {e}, chat_session_id: {chat_session_id}")
             return jsonify({'error': str(e)}), 500
@@ -1072,7 +1080,7 @@ def create_stripe_session():
             return jsonify({"success": False, "error_message": "Missing required fields."}), 400
 
         # Create Stripe Checkout Session
-        session = create_stripe_checkout_session(
+        stripe_session = create_stripe_checkout_session(
             user_id=user_id,
             email=email,
             subscription_plan=subscription_plan,
