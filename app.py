@@ -915,7 +915,7 @@ def create_account():
                 "name": name,
                 "phone": phone,
                 "address": address,
-                'subscription_status': 'inactive',  # Set to 'pending' initially
+                'subscription_status': 'inactive',  # Set to 'inactive' initially
                 "gpt_config": {"default_behavior": "friendly"},
                 "is_verified": False,
             }
@@ -1025,12 +1025,18 @@ def subscriptions():
 
 @app.route('/stripe-webhook', methods=['POST'])
 def stripe_webhook():
+
+    logging.error("Received a POST request to /stripe-webhook")
+    logging.error(f"Headers: {request.headers}")
+    logging.error(f"Body: {request.get_data(as_text=True)}")
+
     payload = request.get_data(as_text=True)
     sig_header = request.headers.get('Stripe-Signature')
     endpoint_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
 
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
+        logging.error(f"Successfully constructed Stripe event: {event['type']}")
     except ValueError:
         logging.error("Invalid payload")
         return "Invalid payload", 400
