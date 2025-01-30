@@ -2,16 +2,30 @@
    Global Reset for different browser compatibility 
 -----------------------------------------------------------*/
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
     box-sizing: border-box;
 }
 
-body, h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd {
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
     margin: 0;
     padding: 0;
 }
 
-ul, ol {
+ul,
+ol {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -27,17 +41,22 @@ img {
 body {
     display: flex;
     flex-direction: column;
-    justify-content: space-between; /* Ensures footer stays at the bottom */
-    min-height: 100vh; /* Full viewport height */
+    justify-content: space-between;
+    /* Ensures footer stays at the bottom */
+    min-height: 100vh;
+    /* Full viewport height */
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #333;
-    background: linear-gradient(180deg, #f5f7fa, #eaeef3); /* Subtle gradient */
-    line-height: 1.5; /* Improved readability */
+    background: linear-gradient(180deg, #f5f7fa, #eaeef3);
+    /* Subtle gradient */
+    line-height: 1.5;
+    /* Improved readability */
 }
 
 html {
-    scroll-behavior: smooth; /* Smooth scrolling */
+    scroll-behavior: smooth;
+    /* Smooth scrolling */
 }
 
 /*--------------------------------------------------------------
@@ -58,8 +77,10 @@ header a {
 
 /* Specific styling for header images to override global img display */
 header img {
-    display: inline-block; /* Override global block display */
-    margin: 0 auto; /* Center the image */
+    display: inline-block;
+    /* Override global block display */
+    margin: 0 auto;
+    /* Center the image */
 }
 
 
@@ -119,8 +140,9 @@ main {
 
 .container.form-container {
     margin: 0 auto;
-    text-align: left; 
-    max-width: 600px; /* Wider than default to give the form more space */
+    text-align: left;
+    max-width: 600px;
+    /* Wider than default to give the form more space */
     width: 90%;
 }
 
@@ -226,7 +248,8 @@ main {
 
 .form-note .link {
     color: #42AC68;
-    text-decoration: underline; /* Ensure underlines for specific links */
+    text-decoration: underline;
+    /* Ensure underlines for specific links */
 }
 
 .form-note .link:hover {
@@ -238,7 +261,8 @@ main {
    PROGRESSIVE FORGOT PASSWORD STYLING
 -----------------------------------------------------------*/
 .progressive-forgot-password .link {
-    text-decoration: underline; /* Ensure underlines for specific links */
+    text-decoration: underline;
+    /* Ensure underlines for specific links */
 }
 
 .progressive-forgot-password .link:hover {
@@ -277,8 +301,9 @@ main {
 
 .create-account-page .form-container {
     margin: 0 auto;
-    text-align: left; 
-    max-width: 600px; /* Wider than default to give the form more space */
+    text-align: left;
+    max-width: 600px;
+    /* Wider than default to give the form more space */
     width: 90%;
 }
 
@@ -390,16 +415,20 @@ main {
    LOGOUT PAGE CUSTOM STYLING
 ------------------------------------------------------------- */
 .logout-page .container {
-    padding: 30px 20px; /* Adjust padding for the container */
-    margin: 40px auto;  /* Add more spacing around the container */
+    padding: 30px 20px;
+    /* Adjust padding for the container */
+    margin: 40px auto;
+    /* Add more spacing around the container */
 }
 
 .logout-page h1 {
-    margin-bottom: 25px; /* Adjust spacing below the heading */
+    margin-bottom: 25px;
+    /* Adjust spacing below the heading */
 }
 
 .logout-page p {
-    margin-bottom: 35px; /* Adjust spacing below the paragraph */
+    margin-bottom: 35px;
+    /* Adjust spacing below the paragraph */
 }
 
 
@@ -423,28 +452,36 @@ main {
    MODAL STYLING FOR ERROR-MODAL
 -----------------------------------------------------------*/
 .modal {
-    display: none; /* Hidden by default */
-    position: fixed; /* Stay in place */
-    z-index: 1000; /* Sit on top */
+    display: none;
+    /* Hidden by default */
+    position: fixed;
+    /* Stay in place */
+    z-index: 1000;
+    /* Sit on top */
     left: 0;
     top: 0;
-    width: 100%; /* Full width */
-    height: 100%; /* Full height */
-    overflow: auto; /* Enable scroll if needed */
-    background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+    width: 100%;
+    /* Full width */
+    height: 100%;
+    /* Full height */
+    overflow: auto;
+    /* Enable scroll if needed */
+    background-color: rgba(0, 0, 0, 0.5);
+    /* Black w/ opacity */
     animation: fadeIn 0.3s ease-in-out;
 }
 
 .modal-content {
     background-color: #fff;
-    margin: 15% auto; /* 15% from the top and centered */
+    margin: 15% auto;
+    /* 15% from the top and centered */
     padding: 20px;
     border: 1px solid #888;
     width: 80%;
     max-width: 400px;
     border-radius: 8px;
     position: relative;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
     opacity: 0;
     transform: translateY(-50px);
     transition: opacity 0.3s ease, transform 0.3s ease;
@@ -470,8 +507,13 @@ main {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 /* Accessible Modal Styling */
@@ -492,7 +534,8 @@ main {
         font-size: 2rem;
     }
 
-    .app-description, .footer-bar p {
+    .app-description,
+    .footer-bar p {
         font-size: 1rem;
     }
 
@@ -515,5 +558,140 @@ main {
     /* Adjust modal width on small screens */
     #modal {
         width: 90%;
+    }
+}
+
+/*-------------------------------------------------------------
+   SUBSCRIPTION FORM STYLING
+-------------------------------------------------------------*/
+#subscriptions-form {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    max-width: 800px;
+    margin: 40px auto;
+    text-align: left;
+}
+
+#subscriptions-form h2 {
+    font-size: 2rem;
+    margin-bottom: 30px;
+    text-align: center;
+    color: #333;
+}
+
+/* Subscription Plans Layout */
+.subscription-options {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.subscription-options {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 30px;
+}
+
+.plan-box {
+    background: #f9fafb;
+    padding: 20px;
+    border-radius: 8px;
+    width: 45%;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    transition: transform 0.3s ease;
+}
+
+.plan-box:hover {
+    transform: translateY(-10px);
+}
+
+.plan-box h3 {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.plan-box .price {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #468763;
+    margin-bottom: 20px;
+}
+
+.offers-section {
+    margin-bottom: 20px;
+}
+
+.offer-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.offer-label {
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.offer-label input {
+    transform: scale(1.2);
+}
+
+.plan-details {
+    margin-top: 20px;
+    font-size: 0.95rem;
+    color: #555;
+}
+
+.tc-link {
+    color: #468763;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.tc-link:hover {
+    text-decoration: underline;
+}
+
+/* Button styling */
+#proceed-to-checkout {
+    background: #468763;
+    color: white;
+    font-size: 1.1rem;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 20px;
+}
+
+#proceed-to-checkout:hover {
+    background: #396b4f;
+}
+
+#proceed-to-checkout:focus {
+    outline: none;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .subscription-options {
+        flex-direction: column;
+    }
+
+    .plan-box {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+
+    #proceed-to-checkout {
+        width: 100%;
     }
 }
