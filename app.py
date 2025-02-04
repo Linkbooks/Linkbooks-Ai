@@ -1067,8 +1067,6 @@ def handle_checkout_session_completed(session):
     subscription_id = session.get("subscription")
     free_week = True if subscription_plan == "annual_free_week" else False
 
-
-
     if not user_id:
         raise Exception("No user_id found in session metadata.")
 
@@ -1097,8 +1095,13 @@ def handle_checkout_session_completed(session):
         "created_at": datetime.utcnow().isoformat()
     }).execute()
 
-    # Send verification email via SMTP (Brevo)
-    send_verification_email(email, token)
+    # Attempt to send the verification email via Brevo
+    try:
+        send_verification_email(email, token)
+    except Exception as e:
+        # Log the error but do not raise an exception so that we return a 200 to Stripe.
+        logging.error(f"Failed to send verification email to {email}: {e}")
+        # Optionally, you might want to notify yourself or take other action here.
 
 
 def handle_checkout_session_failed(session):
