@@ -14,6 +14,7 @@
     <!-- Hidden input fields to pass user data -->
     <input type="hidden" id="email" value="{{ email }}">
     <input type="hidden" id="chat-session-id" value="{{ chat_session_id }}">
+    <input type="hidden" id="user-id" value="{{ user_id }}">
 
     <h2>Select Your Subscription Plan</h2>
 
@@ -59,7 +60,7 @@
               Free Week: Try for 7 days, then pay &pound;60/year
             </label>
             <label class="offer-label">
-              <input type="radio" name="subscription-plan" value="annual_discount_no_free_week" required />
+              <input type="radio" name="subscription-plan" value="annual_further_discount" required />
               Further Discount: &pound;55/year (Save an extra &pound;5 if you pay upfront)
             </label>
           </div>
@@ -69,7 +70,7 @@
             will be billed &pound;60 for the year. You can cancel during the free week to avoid charges.</p>
           <a href="#">Read Terms and Conditions</a>
         </div>
-        <div class="plan-details" id="annual_discount_no_free_week-details">
+        <div class="plan-details" id="annual_further_discount-details">
           <p><strong>Further Discount Terms:</strong> Pay upfront &pound;55/year (save an extra &pound;5).</p>
           <a href="#">Read Terms and Conditions</a>
         </div>
@@ -124,17 +125,19 @@
 
         const email = document.getElementById("email").value;
         const chatSessionId = document.getElementById("chat-session-id").value;
+        const userId = document.getElementById("user-id").value;
 
         try {
-          const response = await fetch("/create-checkout-session", {
+          const response = await fetch("/create-stripe-session", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              plan: selectedPlan.value,
+              subscription_plan: selectedPlan.value,
               email: email,
-              chat_session_id: chatSessionId
+              chat_session_id: chatSessionId,
+              user_id: userId
             }),
           });
 
