@@ -1142,10 +1142,14 @@ def handle_invoice_payment_succeeded(invoice):
 
 def handle_customer_subscription_updated(subscription):
     customer_id = subscription["customer"]
+    # Here, subscription["id"] is the subscription id
+    subscription_id = subscription.get("id")
     status = subscription["status"]
     trial_end = subscription.get("trial_end")
 
-    updates = {"subscription_status": status}
+    updates = {"subscription_status": status,
+               "subscription_id": subscription_id  # Update subscription_id here
+    }
     if trial_end and trial_end < datetime.utcnow().timestamp():
         updates["free_week"] = False
 
