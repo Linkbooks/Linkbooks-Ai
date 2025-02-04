@@ -1065,6 +1065,8 @@ def handle_checkout_session_completed(session):
     customer_id = session.get("customer")
     user_id = session.get("metadata", {}).get("user_id")
     subscription_id = session.get("subscription")
+    free_week = True if subscription_plan == "annual_free_week" else False
+
 
 
     if not user_id:
@@ -1079,6 +1081,7 @@ def handle_checkout_session_completed(session):
         "subscription_id": subscription_id,
         "chat_session_id": chat_session_id,
         "customer_id": customer_id,
+        "free_week": free_week,  # Set free_week based on the plan
         "updated_at": datetime.utcnow().isoformat()
     }).execute()
 
