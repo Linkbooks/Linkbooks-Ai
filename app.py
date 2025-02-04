@@ -947,36 +947,26 @@ def create_account():
 @app.route('/subscriptions', methods=['GET', 'POST'])
 def subscriptions():
     if request.method == 'GET':
-        # Retrieve from Flask session
-        email = session.get('email') # Retrieve email from session
-        chat_session_id = session.get('chat_session_id', None) # Retrieve chat_session_id if set
+        email = session.get('email')
+        chat_session_id = session.get('chat_session_id', None)
+        user_id = session.get('user_id')  # Ensure user_id is passed
 
         if not email:
-            # If we don’t have an email in session, require account creation:
-            return redirect(url_for('create_account'))  # Redirect if no email in session
-        
-        # Check if the user already has a subscription
+            return redirect(url_for('create_account'))
+
         user_profile = supabase.table("user_profiles").select("subscription_status").eq("email", email).execute()
         if user_profile.data:
             subscription_status = user_profile.data[0].get("subscription_status")
             if subscription_status == "active":
                 return redirect(url_for('dashboard'))
             elif subscription_status == "pending":
-                # Inform the user that their payment is being processed
-                return render_template('subscriptions.html', email=email, chat_session_id=chat_session_id, message="Your payment is being processed. Please check your email for verification.")
+                return render_template('subscriptions.html', email=email, chat_session_id=chat_session_id, user_id=user_id, message="Your payment is being processed. Please check your email for verification.")
             elif subscription_status == "inactive":
-                # Allow the user to select a different plan
-                pass  # Continue to render the subscription selection page
+                pass
         else:
-            # User profile not found, redirect to create account
             return redirect(url_for('create_account'))
-        
-        # Render the subscription selection page (if subscription status is set to inactive)
-        return render_template(
-            'subscriptions.html', 
-            email=email, 
-            chat_session_id=chat_session_id
-        )
+
+        return render_template('subscriptions.html', email=email, chat_session_id=chat_session_id, user_id=user_id)
     
     elif request.method == 'POST':
         # Receive JSON data from front-end
@@ -1184,7 +1174,7 @@ def create_stripe_session():
         )
 
         logging.info(f"Stripe session created successfully: {stripe_session.id}")
-        return jsonify({"success": True, "sessionId": stripe_session.id}), 200
+        return jsonify({"success": True, "checkout_url": stripe_session.url}), 200
 
     except Exception as e:
         logging.error(f"Error in /create-stripe-session: {e}")
