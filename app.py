@@ -935,12 +935,14 @@ def create_account():
             return jsonify({"success": False, "error_message": "Failed to save user profile."}), 500
 
 
-        # Save email and chat_session_id in session (if provided)
+        # Save user details in the session to auto-login
+        session['user_id'] = user_id
         session['email'] = email
         if chat_session_id:
             session['chat_session_id'] = chat_session_id
 
         return redirect(url_for('subscriptions'))
+
 
 
 
@@ -1062,6 +1064,8 @@ def handle_checkout_session_completed(session):
     chat_session_id = session.get("metadata", {}).get("chat_session_id")
     customer_id = session.get("customer")
     user_id = session.get("metadata", {}).get("user_id")
+    subscription_id = session.get("subscription")
+
 
     if not user_id:
         raise Exception("No user_id found in session metadata.")
@@ -1072,6 +1076,7 @@ def handle_checkout_session_completed(session):
         "email": email,
         "subscription_status": "active",
         "subscription_plan": subscription_plan,
+        "subscription_id": subscription_id,
         "chat_session_id": chat_session_id,
         "customer_id": customer_id,
         "updated_at": datetime.utcnow().isoformat()
@@ -1162,6 +1167,12 @@ def create_stripe_session():
         email = data.get('email')
         subscription_plan = data.get('subscription_plan')
         chat_session_id = data.get('chat_session_id')  # Optional
+        
+        # Convert string "None" to actual None
+        if chat_session_id == "None":
+            chat_session_id = None
+        if user_id == "None":
+            user_id = None
 
         logging.info(f"Creating Stripe session for user: {email}, plan: {subscription_plan}")
 
