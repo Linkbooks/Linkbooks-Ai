@@ -26,11 +26,11 @@
           <p><strong>Offers Included:</strong></p>
           <div class="offer-options">
             <label class="offer-label">
-              <input type="radio" name="monthly-offer" value="monthly_3mo_discount" required />
+              <input type="radio" name="subscription-plan" value="monthly_3mo_discount" required />
               &pound;5/month for 3 months (&pound;15 upfront for the first 3 months)
             </label>
             <label class="offer-label">
-              <input type="radio" name="monthly-offer" value="monthly_no_offer" required />
+              <input type="radio" name="subscription-plan" value="monthly_no_offer" required />
               No offer: &pound;10/month, cancel anytime
             </label>
           </div>
@@ -55,11 +55,11 @@
           <p><strong>Offers Included:</strong></p>
           <div class="offer-options">
             <label class="offer-label">
-              <input type="radio" name="annual-offer" value="annual_free_week" required />
+              <input type="radio" name="subscription-plan" value="annual_free_week" required />
               Free Week: Try for 7 days, then pay &pound;60/year
             </label>
             <label class="offer-label">
-              <input type="radio" name="annual-offer" value="annual_discount_no_free_week" required />
+              <input type="radio" name="subscription-plan" value="annual_discount_no_free_week" required />
               Further Discount: &pound;55/year (Save an extra &pound;5 if you pay upfront)
             </label>
           </div>
@@ -85,25 +85,26 @@
     document.addEventListener("DOMContentLoaded", function () {
       const form = document.getElementById("subscriptions-form");
 
+      // Hide all plan details initially
+      document.querySelectorAll(".plan-details").forEach(details => {
+        details.style.display = "none";
+      });
+
       // Function to handle showing and hiding plan details
       function handlePlanSelection(event) {
         const selectedInput = event.target;
 
         if (selectedInput.type === "radio") {
-          // Determine if it's a Monthly or Annual plan selection
-          const planBox = selectedInput.closest(".plan-box");
-
-          // Hide all details inside the selected plan-box
-          planBox.querySelectorAll(".plan-details").forEach(details => {
+          // Hide all plan details first
+          document.querySelectorAll(".plan-details").forEach(details => {
             details.style.display = "none";
           });
 
-          // Find and show the details of the selected offer
+          // Show the details for the selected plan
           const selectedDetailsId = selectedInput.value + "-details";
           const selectedDetails = document.getElementById(selectedDetailsId);
-
           if (selectedDetails) {
-            selectedDetails.style.display = "block"; // Show the selected details
+            selectedDetails.style.display = "block";
           }
         }
       }
@@ -111,9 +112,43 @@
       // Attach event listener for changes in radio button selection
       form.addEventListener("change", handlePlanSelection);
 
-      // Initially hide all plan details
-      document.querySelectorAll(".plan-details").forEach(details => {
-        details.style.display = "none";
+      // Add form submission handler
+      form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        const selectedPlan = document.querySelector('input[name="subscription-plan"]:checked');
+        if (!selectedPlan) {
+          alert("Please select a subscription plan");
+          return;
+        }
+
+        const email = document.getElementById("email").value;
+        const chatSessionId = document.getElementById("chat-session-id").value;
+
+        try {
+          const response = await fetch("/create-checkout-session", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              plan: selectedPlan.value,
+              email: email,
+              chat_session_id: chatSessionId
+            }),
+          });
+
+          const data = await response.json();
+          
+          if (data.checkout_url) {
+            window.location.href = data.checkout_url;
+          } else {
+            alert("Error creating checkout session");
+          }
+        } catch (error) {
+          console.error("Error:", error);
+          alert("Error creating checkout session");
+        }
       });
     });
   </script>

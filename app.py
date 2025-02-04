@@ -2271,3 +2271,49 @@ if __name__ == '__main__':
 
 if os.getenv("FLASK_ENV") == "production":
     app.debug = False
+
+@app.route('/create-checkout-session', methods=['POST'])
+def create_stripe_session():
+    try:
+        data = request.json
+        email = data.get('email')
+        subscription_plan = data.get('plan')
+        chat_session_id = data.get('chat_session_id')
+
+        if not email or not subscription_plan:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Get user_id from user_profiles
+        user_profile = supabase.table("user_profiles").select("id").eq("email", email).execute()
+        if not user_profile.data:
+            return jsonify({"error": "User not found"}), 404
+        
+        user_id = user_profile.data[0]['id']
+
+        stripe_session = create_stripe_checkout_session(
+            user_id=user_id,
+            email=email,
+            subscription_plan=subscription_plan,
+            chat_session_id=chat_session_id
+        )
+
+        if not stripe_session:
+            return jsonify({"error": "Failed to create checkout session"}), 500
+
+        return jsonify({"checkout_url": stripe_session.url}), 200
+
+    except Exception as e:
+        logging.error(f"Error creating checkout session: {e}")
+        return jsonify({"error": str(e)}), 500
+
+def create_stripe_checkout_session(user_id, email, subscription_plan, chat_session_id=None):
+    """Creates and returns a Stripe Checkout Session."""
+    # Map subscription plans to Stripe Price IDs
+    plan_details = {
+        "monthly_no_offer": {"price_id": "price_1QhXfxDi1nqWbBYc76q14cWL", "trial_days": 0},
+        "monthly_3mo_discount": {"price_id": "price_1QhdvrDi1nqWbBYcWOcfXTRJ", "trial_days": 0},
+        "annual_free_week": {"price_id": "price_1QhdyFDi1nqWbBYcdzAdZ7lE", "trial_days": 7},
+        "annual_discount_no_free_week": {"price_id": "price_1Qhe01Di1nqWbBYcixjWCokH", "trial_days": 0}
+    }
+    
+    # ...rest of the function...
