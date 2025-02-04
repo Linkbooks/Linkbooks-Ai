@@ -127,6 +127,10 @@
         const chatSessionId = document.getElementById("chat-session-id").value;
         const userId = document.getElementById("user-id").value;
 
+        // Convert "None" or empty strings to null
+        chatSessionId = (chatSessionId === "None" || chatSessionId.trim() === "") ? null : chatSessionId;
+        userId = (userId === "None" || userId.trim() === "") ? null : userId;
+
         try {
           const response = await fetch("/create-stripe-session", {
             method: "POST",

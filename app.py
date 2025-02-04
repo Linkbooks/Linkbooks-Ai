@@ -815,6 +815,10 @@ def login():
         # Generate session token
         token = generate_session_token(user_id, email)
         logging.info(f"Generated session token for user ID: {user_id}")
+        
+         # Store the user's ID and email in the session for later use
+        session['user_id'] = user_id
+        session['email'] = email
 
         # Link ChatGPT session ID if provided
         if chat_session_id:
@@ -1009,9 +1013,9 @@ def subscriptions():
             return jsonify({'error': str(e)}), 500
 
 
-#--------------------------------------------#    
-#              Stripe Routes                #
-#--------------------------------------------#
+#------------------------------------------------#    
+#                  Stripe Routes                 #
+#------------------------------------------------#
 
 @app.route('/stripe-webhook', methods=['POST'])
 def stripe_webhook():
