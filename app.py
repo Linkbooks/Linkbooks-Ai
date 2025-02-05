@@ -662,33 +662,6 @@ def create_stripe_checkout_session(user_id, email, subscription_plan, chat_sessi
         raise Exception(f"Failed to create Stripe session: {str(e)}")
 
 
-
-
-def create_discounted_subscription(customer_id, email):
-    try:
-        # Create a subscription schedule for phased billing
-        subscription_schedule = stripe.SubscriptionSchedule.create(
-            customer=customer_id,
-            start_date="now",
-            end_behavior="release",
-            phases=[
-                {
-                    "items": [{"price": "price_1QhdvrDi1nqWbBYcWOcfXTRJ"}],  # £15 for 3 months
-                    "iterations": 3,  # 3 billing cycles
-                },
-                {
-                    "items": [{"price": "price_1QhXfxDi1nqWbBYc76q14cWL"}],  # £10/month thereafter
-                },
-            ],
-        )
-        return subscription_schedule
-    except stripe.error.StripeError as e:
-        logging.error(f"Stripe API error while creating subscription schedule: {e}")
-        raise Exception(f"Failed to create subscription schedule: {str(e)}")
-
-
-
-
     # -------------------------
     # App Requests functions/definitions
     # -------------------------#
@@ -1165,6 +1138,35 @@ def handle_customer_subscription_updated(subscription):
         raise Exception("User not found")
 
     supabase.table("user_profiles").update(updates).eq("customer_id", customer_id).execute()
+
+
+def create_subscription_schedule(customer_id):
+    try:
+        plan_details = {
+            "monthly_no_offer": "price_1QhXfxDi1nqWbBYc76q14cWL",
+            "monthly_3mo_discount": "price_1QhdvrDi1nqWbBYcWOcfXTRJ"
+        }
+
+        subscription_schedule = stripe.SubscriptionSchedule.create(
+            customer=customer_id,
+            start_date="now",  # Starts immediately
+            end_behavior="release",  # Ensures it transitions to standard pricing
+            phases=[
+                {
+                    "items": [{"price": plan_details["monthly_3mo_discount"], "quantity": 1}],
+                    "iterations": 3,  # Lasts for 3 billing cycles
+                    "cancellation_behavior": "none",  # Prevents early cancellation
+                },
+                {
+                    "items": [{"price": plan_details["monthly_no_offer"], "quantity": 1}],
+                    "iterations": None,  # Continues indefinitely
+                },
+            ],
+        )
+        return subscription_schedule
+    except Exception as e:
+        print(f"Error creating subscription schedule: {e}")
+        return None
 
 
 @app.route('/create-stripe-session', methods=['POST'])
