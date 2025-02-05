@@ -1,178 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Linkbooks Ai</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" onerror="this.onerror=null; this.href='static/styles.css';">
-    <style>
-        /* Custom styles for the dashboard */
-        .status-container {
-            text-align: center;
-            margin-bottom: 20px;
-            padding: 20px;
-            background: #f9fafb;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        }
+{% extends "layout.html" %}
 
-        .status-container h3 {
-            margin-bottom: 10px;
-            font-weight: 600;
-            color: #333;
-        }
+{% block title %}Dashboard - Linkbooks Ai{% endblock %}
 
-        .status-container p {
-            font-size: 1.1rem;
-            margin: 5px 0;
-            color: #555;
-        }
+{% block content %}
 
-        .button-container {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            flex-wrap: wrap; /* Wrap buttons for smaller screens */
-            margin-top: 20px;
-        }
+<div class="dashboard-container">
+    <!-- Hidden input for chatSessionId -->
+    <input type="hidden" id="chatSessionId" value="{{ chatSessionId }}">
 
-        .button-container button {
-            padding: 15px 30px;
-            font-size: 1rem;
-            text-align: center;
-            color: white;
-            background: linear-gradient(90deg, #42AC68, #024822);
-            border: none;
-            border-radius: 30px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-            transition: all 0.3s ease-in-out;
-            cursor: pointer;
-        }
-
-        .button-container button:hover {
-            background: linear-gradient(90deg, #024822, #42AC68);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-            transform: translateY(-2px);
-        }
-
-        #response-container {
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        #response-container button {
-            margin: 5px;
-            padding: 10px 20px;
-            font-size: 0.9rem;
-            color: white;
-            background: linear-gradient(90deg, #42AC68, #024822);
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
-        #modal {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 90%; /* Updated for smaller screens */
-            max-width: 500px;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            z-index: 1000;
-        }
-
-        #modal-content pre {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            font-size: 0.9rem;
-            color: #444;
-        }
-
-        #modal button {
-            margin-top: 10px;
-            padding: 10px 20px;
-            background: #007aff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <!-- Add your logo here -->
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo" style="max-width: 80px; margin-bottom: 20px;">
+    <header style="margin-top: 0px;">
+        <img src="{{ url_for('static', filename='logo.png') }}" 
+             alt="App Logo" 
+             style="max-width: 100px; margin-bottom: 10px;">
         <h1>Linkbooks Ai</h1>
     </header>
 
-    <!-- Hidden input for chatSessionId -->
-    <input type="hidden" id="chatSessionId" value="{{ chatSessionId }}">
-    
-    <main>
-        <h2>Dashboard</h2>
-        <div class="container">
+    <div style="width: 80px; height: 2px; background-color: green; margin: 20px auto; border-radius: 1px;"></div>
 
-            {% if quickbooks_login_needed %}
-                <div class="quickbooks-login-prompt">
-                    <p>You need to log in with QuickBooks to access your data.</p>
-                    <a 
-                        id="quickbooks-login-button" 
-                        href="/quickbooks-login?chatSessionId={{ chatSessionId }}" 
-                        class="button">
-                        Log in with QuickBooks
-                    </a>
-                </div>
-            {% endif %}
-
-
-
-            <!-- Display Success Message -->
-            {% if success_message %}
-                <div id="qb-success-banner" class="message success-message">
-                    <p>QuickBooks authorization successful!</p>
-                    <button id="qb-success-close" style="margin-left: 20px;">×</button>
-                </div>
-            {% endif %}
-
-            <!-- Connection Status Section -->
-            <div class="status-container">
-                <h3>Connection Status</h3>
-                <p>QuickBooks: <span id="quickbooks-status">Checking...</span></p>
-                <p>OpenAI: <span id="openai-status">Checking...</span></p>
+    <h2 class="dashboard-title">Dashboard</h2>
+    <div class="container">
+        {% if quickbooks_login_needed %}
+            <div class="quickbooks-login-prompt">
+                <p>You need to log in with QuickBooks to access your data.</p>
+                <a 
+                    id="quickbooks-login-button" 
+                    href="/quickbooks-login?chatSessionId={{ chatSessionId }}" 
+                    class="button">
+                    Log in with QuickBooks
+                </a>
             </div>
+        {% endif %}
 
-            <!-- Buttons for Actions -->
-            <div class="button-container">
-                <button onclick="fetchReports()">List Available Reports</button>
-                <button onclick="testOpenAI()">Test OpenAI API</button>
-                <button onclick="window.location.href='/logout'">Logout</button>
-                <!-- New QuickBooks Login Button -->
-                <button id="quickbooks-login-button" onclick="window.location.href='/quickbooks-login'" style="display: none;">Log in with QuickBooks</button>
+        <!-- Display Success Message -->
+        {% if success_message %}
+            <div id="qb-success-banner" class="message success-message">
+                <p>QuickBooks authorization successful!</p>
+                <button id="qb-success-close" style="margin-left: 20px;">×</button>
             </div>
+        {% endif %}
 
-            <!-- Response Section -->
-            <div id="response-container"></div>
+        <!-- Dashboard Status Section -->
+        <div class="status-container">
+            <h3>Connection Status</h3>
+            <p>QuickBooks: <span id="quickbooks-status">Checking...</span></p>
+            <p>OpenAI: <span id="openai-status">Checking...</span></p>
         </div>
-    </main>
 
+        <!-- Buttons Section -->
+        <div class="button-container">
+            <button onclick="fetchReports()">List Available Reports</button>
+            <button onclick="openWhatElseModal()">What else can I do?</button>
+        </div>
+        
+        <!-- Modal for "What else can I do?" -->
+        <div id="what-else-modal">
+            <div id="what-else-modal-content"></div>
+            <button onclick="closeWhatElseModal()">Close</button>
+        </div>
+        
+        <!-- Additional Elements -->
+        <div id="response-container"></div>
+    </div>
     <!-- Modal for Report Details -->
     <div id="modal">
         <div id="modal-content"></div>
         <button onclick="closeModal()">Close</button>
     </div>
-
-    <footer>
-        <p>&copy; 2024 Linkbooks | Powered by QuickBooks GPT | 
-            <a href="/eula" aria-label="End User License Agreement">EULA</a> | 
-            <a href="/privacy-policy" aria-label="Privacy Policy">Privacy Policy</a>
-        </p>
-    </footer>
 
     <script>
         // Check QuickBooks connection status
@@ -195,7 +88,6 @@
             }
         }
         
-
         // Check OpenAI connection status
         async function checkOpenAI() {
             try {
@@ -212,8 +104,10 @@
         }
 
         // Run connection checks on load
-        checkQuickBooks();
-        checkOpenAI();
+        document.addEventListener('DOMContentLoaded', () => {
+            checkQuickBooks();
+            checkOpenAI();
+        });
 
         // Dynamically update the QuickBooks login button with chatSessionId
         document.addEventListener('DOMContentLoaded', function () {
@@ -239,7 +133,29 @@
             }
         });
 
+        function openWhatElseModal() {
+            const modal = document.getElementById('what-else-modal');
+            const modalContent = document.getElementById('what-else-modal-content');
+            
+            // Set modal content with what the user can do
+            modalContent.innerHTML = `
+                <h2>What Else Can I Do?</h2>
+                <p>Linkbooks AI offers several powerful features:</p>
+                <ul>
+                    <li>Generate business insights from your financial data</li>
+                    <li>Create detailed reports and summaries</li>
+                    <li>Connect and analyze data from QuickBooks</li>
+                    <li>Use AI-powered chat to ask questions about your business</li>
+                </ul>
+            `;
+            
+            modal.style.display = 'block';
+        }
+        
+        function closeWhatElseModal() {
+            const modal = document.getElementById('what-else-modal');
+            modal.style.display = 'none';
+        }
     </script>
-</body>
-</html>
-  
+</div>
+{% endblock %}

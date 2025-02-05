@@ -984,7 +984,7 @@ def subscriptions():
             return jsonify({'checkoutUrl': stripe_session.url}), 200
 
         except Exception as e:
-            logging.error(f"Stripe session creation failed: {e}, chat_session_id: {chat_session_id}")
+            logging.error(f"Stripe session creation failed: {e}, chat_session_id: chat_session_id")
             return jsonify({'error': str(e)}), 500
 
 
@@ -1828,6 +1828,33 @@ def callback():
         logging.error(f"Error in /callback: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+
+# ------------------------------------------------------------------------------
+# User Profile and Settings Routes
+# ------------------------------------------------------------------------------
+@app.route('/user_profile')
+@token_required  # Add authentication check
+def user_profile():
+    try:
+        user_id = request.user_id  # Gets user_id from token_required decorator
+        # Fetch user data from Supabase
+        user_data = supabase.table("user_profiles").select("*").eq("id", user_id).execute()
+        if not user_data.data:
+            return {"error": "User not found"}, 404
+        return render_template('user_profile.html', user=user_data.data[0])
+    except Exception as e:
+        logging.error(f"Error in user_profile: {e}")
+        return render_template('error.html', error="Failed to load user profile"), 500
+
+@app.route('/settings')
+@token_required  # Add authentication check
+def settings():
+    try:
+        settings_type = request.args.get('type', 'general')  # Get settings type from URL
+        return render_template('settings.html', settings_type=settings_type)
+    except Exception as e:
+        logging.error(f"Error in settings: {e}")
+        return render_template('error.html', error="Failed to load settings"), 500
 
 # ------------------------------------------
 # Dashboard

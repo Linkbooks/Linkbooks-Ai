@@ -7,22 +7,24 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body class="logout-page">
-    <header>
-        <a href="/" class="header-link">
-            <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo" class="logo">
-            <h1>Linkbooks Ai</h1>
-        </a>
-    </header>
+    <div class="page-container">
+        <header>
+            <a href="/" class="header-link">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo" class="logo">
+                <h1>Linkbooks Ai</h1>
+            </a>
+        </header>
 
-    <main>
-        <div class="container">
-            <h1>{{ message }}</h1>
-            <p>If you wish to log back in, click below:</p>
-            <div class="button-container">
-                <a href="{{ url_for('login') }}" class="button">Log In</a>
+        <main>
+            <div class="container">
+                <h1>{{ message }}</h1>
+                <p>If you wish to log back in, click below:</p>
+                <div class="button-container">
+                    <a href="{{ url_for('login') }}" class="button">Log In</a>
+                </div>
             </div>
-        </div>
-    </main>
+        </main>
+    </div>
 
     <footer>
         <p>&copy; 2024 Linkbooks Ltd. All rights reserved.</p>

@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="page-header">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Linkbooks Logo" class="center-logo">
+    <h1>User Profile</h1>
+</div>
+
+<div class="dashboard-container">
+    {% if user %}
+    <div class="profile-info">
+        <p><strong>Name:</strong> {{ user.name }}</p>
+        <p><strong>Email:</strong> {{ user.email }}</p>
+        <p><strong>Subscription Status:</strong> {{ user.subscription_status }}</p>
+    </div>
+    {% endif %}
+    
+    <div class="button-container">
+        <a href="{{ url_for('dashboard') }}" class="button">Back to Dashboard</a>
+    </div>
+</div>
+{% endblock %}

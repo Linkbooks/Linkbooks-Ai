@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="page-header">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Linkbooks Logo" class="center-logo">
+    <h1>Settings</h1>
+</div>
+
+<div class="dashboard-container">
+    <div class="settings-content">
+        {% if settings_type == 'general' %}
+            <h3>General Settings</h3>
+            <!-- Add general settings content -->
+        {% elif settings_type == 'account' %}
+            <h3>Account Settings</h3>
+            <!-- Add account settings content -->
+        {% elif settings_type == 'preferences' %}
+            <h3>Preferences</h3>
+            <!-- Add preferences content -->
+        {% endif %}
+    </div>
+    
+    <div class="button-container">
+        <a href="{{ url_for('dashboard') }}" class="button">Back to Dashboard</a>
+    </div>
+</div>
+{% endblock %}
