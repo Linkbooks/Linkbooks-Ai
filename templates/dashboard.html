@@ -9,9 +9,8 @@
     <input type="hidden" id="chatSessionId" value="{{ chatSessionId }}">
 
     <header style="margin-top: 0px;">
-        <img src="{{ url_for('static', filename='logo.png') }}" 
-             alt="App Logo" 
-             style="max-width: 100px; margin-bottom: 10px;">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo"
+            style="max-width: 100px; margin-bottom: 10px;">
         <h1>Linkbooks Ai</h1>
     </header>
 
@@ -20,23 +19,20 @@
     <h2 class="dashboard-title">Dashboard</h2>
     <div class="container">
         {% if quickbooks_login_needed %}
-            <div class="quickbooks-login-prompt">
-                <p>You need to log in with QuickBooks to access your data.</p>
-                <a 
-                    id="quickbooks-login-button" 
-                    href="/quickbooks-login?chatSessionId={{ chatSessionId }}" 
-                    class="button">
-                    Log in with QuickBooks
-                </a>
-            </div>
+        <div class="quickbooks-login-prompt">
+            <p>You need to log in with QuickBooks to access your data.</p>
+            <a id="quickbooks-login-button" href="/quickbooks-login?chatSessionId={{ chatSessionId }}" class="button">
+                Log in with QuickBooks
+            </a>
+        </div>
         {% endif %}
 
         <!-- Display Success Message -->
         {% if success_message %}
-            <div id="qb-success-banner" class="message success-message">
-                <p>QuickBooks authorization successful!</p>
-                <button id="qb-success-close" style="margin-left: 20px;">×</button>
-            </div>
+        <div id="qb-success-banner" class="message success-message">
+            <p>QuickBooks authorization successful!</p>
+            <button id="qb-success-close" style="margin-left: 20px;">×</button>
+        </div>
         {% endif %}
 
         <!-- Dashboard Status Section -->
@@ -51,13 +47,13 @@
             <button onclick="fetchReports()">List Available Reports</button>
             <button onclick="openWhatElseModal()">What else can I do?</button>
         </div>
-        
+
         <!-- Modal for "What else can I do?" -->
         <div id="what-else-modal">
             <div id="what-else-modal-content"></div>
             <button onclick="closeWhatElseModal()">Close</button>
         </div>
-        
+
         <!-- Additional Elements -->
         <div id="response-container"></div>
     </div>
@@ -87,7 +83,7 @@
                 document.getElementById('quickbooks-login-button').style.display = 'inline-block';
             }
         }
-        
+
         // Check OpenAI connection status
         async function checkOpenAI() {
             try {
@@ -123,20 +119,30 @@
         // Authorisation Success Closable Banner
         document.addEventListener('DOMContentLoaded', function () {
             const closeBtn = document.getElementById('qb-success-close');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    const banner = document.getElementById('qb-success-banner');
-                    if (banner) {
+            const qbStatus = document.getElementById('quickbooks-status');
+            const qbLoginButton = document.getElementById('quickbooks-login-button');
+            const banner = document.getElementById('qb-success-banner');
+
+            if (banner) {
+                // If QuickBooks success banner is shown, update status and hide login button
+                qbStatus.innerText = 'Connected';
+                if (qbLoginButton) {
+                    qbLoginButton.style.display = 'none';
+                }
+
+                if (closeBtn) {
+                    closeBtn.addEventListener('click', () => {
                         banner.style.display = 'none';
-                    }
-                });
+                    });
+                }
             }
         });
+
 
         function openWhatElseModal() {
             const modal = document.getElementById('what-else-modal');
             const modalContent = document.getElementById('what-else-modal-content');
-            
+
             // Set modal content with what the user can do
             modalContent.innerHTML = `
                 <h2>What Else Can I Do?</h2>
@@ -148,10 +154,10 @@
                     <li>Use AI-powered chat to ask questions about your business</li>
                 </ul>
             `;
-            
+
             modal.style.display = 'block';
         }
-        
+
         function closeWhatElseModal() {
             const modal = document.getElementById('what-else-modal');
             modal.style.display = 'none';
