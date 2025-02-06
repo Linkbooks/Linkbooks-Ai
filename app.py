@@ -1861,9 +1861,7 @@ def settings():
 # ------------------------------------------
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
-    """
-    Example dashboard route that attempts to show QuickBooks data for a logged-in user.
-    """
+
     try:
         # Retrieve query parameters
         success_message = request.args.get('quickbooks_login_success')
@@ -1900,35 +1898,24 @@ def dashboard():
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
             logging.warning("Token invalid or expired. QuickBooks disconnected.")
             return render_template(
-                'dashboard.html',
-                success_message=success_message,
-                quickbooks_login_needed=True,
-                chatSessionId=chat_session_id
+                    'dashboard.html',
+                    success_message=success_message,
+                    quickbooks_login_needed=True,
+                    chatSessionId=chat_session_id
             )
 
-        # Attempt to fetch QuickBooks data
-        try:
-            company_info = get_company_info(user_id)
-            return render_template(
-                'dashboard.html',
-                data=company_info,
-                success_message=success_message,
-                quickbooks_login_needed=False,
-                chatSessionId=chat_session_id
-            )
-        except Exception as e:
-            logging.warning(f"Error fetching QuickBooks data: {e}")
-            return render_template(
-                'dashboard.html',
-                success_message=success_message,
-                quickbooks_login_needed=True,
-                chatSessionId=chat_session_id
-            )
+        # Do not fetch company info automatically
+        return render_template(
+            'dashboard.html',
+            success_message=success_message,
+            quickbooks_login_needed=False,
+            chatSessionId=chat_session_id
+        )
+
 
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
-
 
 
 # ------------------------------------------
