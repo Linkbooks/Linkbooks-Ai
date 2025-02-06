@@ -1916,9 +1916,12 @@ def dashboard():
 
         if chat_session_id:
             try:
-                # Query Supabase to check if `is_authenticated` is TRUE for this chatSessionId
-                response = supabase.table("chatgpt_oauth_states").select("is_authenticated").eq("chat_session_id", chat_session_id).execute()
-                
+                # Query Supabase for this exact chatSessionId
+                response = supabase.table("chatgpt_oauth_states").select("chat_session_id", "is_authenticated").eq("chat_session_id", chat_session_id).execute()
+
+                logging.info(f"Supabase response for chatSessionId {chat_session_id}: {response.data}")  # Debugging step
+
+                # Ensure we only check the row that matches this chat_session_id
                 if response.data and response.data[0].get("is_authenticated") is True:
                     quickbooks_login_needed = False  # Mark QuickBooks as connected
                     quickbooks_linked_to_chat = True  # It's properly linked
@@ -1928,6 +1931,7 @@ def dashboard():
 
             except Exception as e:
                 logging.error(f"Error checking QuickBooks authentication status: {e}")
+
 
         # --- New Fallback: Check quickbooks_tokens if no chatSessionId ---
         if quickbooks_login_needed and not chat_session_id:
