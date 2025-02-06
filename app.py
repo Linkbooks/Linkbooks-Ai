@@ -1318,7 +1318,7 @@ def fetch_user_data():
 def quickbooks_login():
     """
     Initiates QuickBooks OAuth, ensuring linkage between user, chat_session_id, and tokens.
-    Stores a unique OAuth state and expiry in chatgpt_oauth_states.
+    Updates the existing row in chatgpt_oauth_states (no new rows).
     """
     try:
         # 1) Extract and decode session token for user-based logic
@@ -1346,23 +1346,31 @@ def quickbooks_login():
         state = generate_random_state()
         expiry = datetime.utcnow() + timedelta(minutes=30)
 
-        # 4) Upsert a row in chatgpt_oauth_states with:
-        #    (user_id, chat_session_id, state, expiry, is_authenticated=False, etc.)
-        # Use upsert so it creates a row if none exists, or updates the existing row.
-        # If you *definitely* want a brand-new row each time, you could do .insert instead.
-        response = supabase.table("chatgpt_oauth_states").upsert({
-            "user_id": user_id,
-            "chat_session_id": chat_session_id,
-            "state": state,
-            "expiry": expiry.isoformat(),
-            "is_authenticated": False
-        }).execute()
+        # 4) Update the existing row in chatgpt_oauth_states.
+        #    If that row doesn't exist, you'll get an empty response.data.
+        response = (
+            supabase.table("chatgpt_oauth_states")
+            .update({
+                "state": state,
+                "expiry": expiry.isoformat(),
+                "is_authenticated": False
+            })
+            .eq("user_id", user_id)
+            .eq("chat_session_id", chat_session_id)
+            .execute()
+        )
 
+        # 5) Check if the update actually updated anything
         if not response.data:
-            logging.error(f"Failed to upsert OAuth state for user_id={user_id}, chat_session_id={chat_session_id}")
-            return jsonify({"error": "Failed to initiate QuickBooks login."}), 500
+            logging.error(
+                f"No existing row found for user_id={user_id}, chat_session_id={chat_session_id}. "
+                "Cannot proceed with QuickBooks login."
+            )
+            return jsonify({
+                "error": "No existing row found to update. The user+chatSession was never linked?"
+            }), 400
 
-        # 5) Construct the QuickBooks OAuth URL with the newly generated 'state'
+        # 6) Construct the QuickBooks OAuth URL with the newly generated 'state'
         auth_url = (
             f"{AUTHORIZATION_BASE_URL}?"
             f"client_id={CLIENT_ID}&"
@@ -1373,13 +1381,12 @@ def quickbooks_login():
         )
         logging.info(f"Redirecting to QuickBooks login: {auth_url}")
 
-        # 6) Redirect the user to the QuickBooks authorization page
+        # 7) Redirect the user to the QuickBooks authorization page
         return redirect(auth_url)
 
     except Exception as e:
         logging.error(f"Error in /quickbooks-login: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-
 
 
 
