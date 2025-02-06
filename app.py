@@ -1922,7 +1922,10 @@ def dashboard():
                 logging.info(f"Supabase response for chatSessionId {chat_session_id}: {response.data}")  # Debugging step
 
                 # Ensure we only check the row that matches this chat_session_id
-                if response.data and response.data[0].get("is_authenticated") is True:
+                if response.data and any(
+                    row["chat_session_id"] == chat_session_id and row.get("is_authenticated") is True 
+                    for row in response.data
+                ):
                     quickbooks_login_needed = False  # Mark QuickBooks as connected
                     quickbooks_linked_to_chat = True  # It's properly linked
                     logging.info(f"QuickBooks is connected for chatSessionId: {chat_session_id}")
