@@ -1862,8 +1862,9 @@ def settings():
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
     """
-    Dashboard route that checks QuickBooks authentication status for the specific chatSessionId.
-    If `is_authenticated` is TRUE for this session, QuickBooks is marked as "Connected".
+    Dashboard route that checks QuickBooks authentication status.
+    If `is_authenticated` is TRUE for a given chatSessionId, QuickBooks is marked as "Connected".
+    If no chatSessionId exists, it checks the user's QuickBooks tokens and warns if not linked to ChatGPT.
     """
     try:
         # Retrieve query parameters
@@ -1908,9 +1909,10 @@ def dashboard():
             )
 
         # ---------------------------
-        # NEW: Check QuickBooks authentication status for THIS chatSessionId only
+        # NEW: Check QuickBooks authentication status
         # ---------------------------
         quickbooks_login_needed = True  # Default to "not connected"
+        quickbooks_linked_to_chat = False  # Default to "not linked to ChatGPT"
 
         if chat_session_id:
             try:
@@ -1919,12 +1921,31 @@ def dashboard():
                 
                 if response.data and response.data[0].get("is_authenticated") is True:
                     quickbooks_login_needed = False  # Mark QuickBooks as connected
+                    quickbooks_linked_to_chat = True  # It's properly linked
                     logging.info(f"QuickBooks is connected for chatSessionId: {chat_session_id}")
                 else:
                     logging.info(f"QuickBooks is NOT connected for chatSessionId: {chat_session_id}")
 
             except Exception as e:
                 logging.error(f"Error checking QuickBooks authentication status: {e}")
+
+        # --- New Fallback: Check quickbooks_tokens if no chatSessionId ---
+        if quickbooks_login_needed and not chat_session_id:
+            try:
+                response = supabase.table("quickbooks_tokens").select("access_token").eq("user_id", user_id).execute()
+                
+                if response.data and response.data[0].get("access_token"):
+                    quickbooks_login_needed = False  # Mark QuickBooks as connected
+                    logging.info(f"QuickBooks is connected for user: {user_id}")
+
+                    # 🚨 BUT: It's NOT linked to a chat session
+                    quickbooks_linked_to_chat = False
+                    logging.warning(f"QuickBooks is connected but NOT linked to a chat session for user: {user_id}")
+                else:
+                    logging.info(f"No QuickBooks tokens found for user: {user_id}")
+
+            except Exception as e:
+                logging.error(f"Error checking QuickBooks token status for user {user_id}: {e}")
 
         # ---------------------------
         # Render dashboard with updated QuickBooks connection status
@@ -1933,13 +1954,13 @@ def dashboard():
             'dashboard.html',
             success_message=success_message,
             quickbooks_login_needed=quickbooks_login_needed,
+            quickbooks_linked_to_chat=quickbooks_linked_to_chat,  # New: Used to show a warning
             chatSessionId=chat_session_id
         )
 
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
-
 
 
 # ------------------------------------------
