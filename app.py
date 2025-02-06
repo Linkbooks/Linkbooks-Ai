@@ -1441,14 +1441,19 @@ from urllib.parse import quote
 @app.route('/oauth/start-for-chatgpt', methods=['GET'])
 def start_oauth_for_chatgpt():
     """
-    Ensures ChatGPT users have a linked middleware user, then returns a QuickBooks OAuth URL.
+    Ensures ChatGPT users have a linked middleware user, then returns a Linkbooks OAuth URL
+    and random chatsessionid if not already provided by chatGPT.
+    
     """
     try:
         chat_session_id = request.args.get('chatSessionId')
         if not chat_session_id:
-            return jsonify({"error": "chatSessionId is required"}), 400
+            # generate a random one
+            chat_session_id = str(uuid.uuid4())  # or your own generator
+            logging.info(f"No chatSessionId given, generated {chat_session_id}")
 
-        logging.info(f"Received chatSessionId: {chat_session_id}")
+
+        logging.info(f"Received (or generated) chatSessionId: {chat_session_id}")
 
         user_check = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
         if not user_check.data:
@@ -1460,11 +1465,17 @@ def start_oauth_for_chatgpt():
                 f"https://linkbooksai.com/login?chatSessionId={encoded_session_id}"
             )
             logging.info(f"ChatGPT session not linked. Redirecting to login: {middleware_login_url}")
-            return jsonify({"loginUrl": middleware_login_url}), 200
+        
+            # Return both the chatSessionId & the loginUrl (so ChatGPT can remember the session ID)
+            return jsonify({
+                "loginUrl": middleware_login_url,
+                "chatSessionId": chat_session_id
+            }), 200
 
         # Check if we already have a valid state
         state_query = supabase.table("chatgpt_oauth_states").select("*").eq("chat_session_id", chat_session_id).execute()
         if state_query.data:
+            # Reuse or refresh
             stored_state = state_query.data[0]
             expiry = datetime.fromisoformat(stored_state["expiry"])
             if datetime.utcnow() < expiry:
@@ -1503,7 +1514,11 @@ def start_oauth_for_chatgpt():
         )
 
         logging.info(f"Generated QuickBooks OAuth URL for chatSessionId {chat_session_id}: {quickbooks_oauth_url}")
-        return jsonify({"loginUrl": quickbooks_oauth_url}), 200
+        # Return both loginUrl & chatSessionId
+        return jsonify({
+            "loginUrl": quickbooks_oauth_url,
+            "chatSessionId": chat_session_id
+        }), 200
 
     except Exception as e:
         logging.error(f"Error in start_oauth_for_chatgpt: {e}", exc_info=True)
