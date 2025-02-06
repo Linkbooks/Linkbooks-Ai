@@ -1862,7 +1862,8 @@ def settings():
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
     """
-    Example dashboard route that attempts to show QuickBooks data for a logged-in user.
+    Dashboard route that checks QuickBooks authentication status for the specific chatSessionId.
+    If `is_authenticated` is TRUE for this session, QuickBooks is marked as "Connected".
     """
     try:
         # Retrieve query parameters
@@ -1905,6 +1906,35 @@ def dashboard():
                 quickbooks_login_needed=True,
                 chatSessionId=chat_session_id
             )
+
+        # ---------------------------
+        # NEW: Check QuickBooks authentication status for THIS chatSessionId only
+        # ---------------------------
+        quickbooks_login_needed = True  # Default to "not connected"
+
+        if chat_session_id:
+            try:
+                # Query Supabase to check if `is_authenticated` is TRUE for this chatSessionId
+                response = supabase.table("chatgpt_oauth_states").select("is_authenticated").eq("chat_session_id", chat_session_id).execute()
+                
+                if response.data and response.data[0].get("is_authenticated") is True:
+                    quickbooks_login_needed = False  # Mark QuickBooks as connected
+                    logging.info(f"QuickBooks is connected for chatSessionId: {chat_session_id}")
+                else:
+                    logging.info(f"QuickBooks is NOT connected for chatSessionId: {chat_session_id}")
+
+            except Exception as e:
+                logging.error(f"Error checking QuickBooks authentication status: {e}")
+
+        # ---------------------------
+        # Render dashboard with updated QuickBooks connection status
+        # ---------------------------
+        return render_template(
+            'dashboard.html',
+            success_message=success_message,
+            quickbooks_login_needed=quickbooks_login_needed,
+            chatSessionId=chat_session_id
+        )
 
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
