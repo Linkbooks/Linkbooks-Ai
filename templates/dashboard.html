@@ -19,12 +19,25 @@
     <h2 class="dashboard-title">Dashboard</h2>
     <div class="container">
         {% if quickbooks_login_needed %}
-        <div class="quickbooks-login-prompt">
-            <p>You need to log in with QuickBooks to access your data.</p>
-            <a id="quickbooks-login-button" href="/quickbooks-login?chatSessionId={{ chatSessionId }}" class="button">
-                Log in with QuickBooks
-            </a>
-        </div>
+            <div class="alert alert-warning">
+                <strong>⚠️ QuickBooks not connected.</strong>
+                <p>You need to log in with QuickBooks to access your data.</p>
+                <a id="quickbooks-login-button" href="/quickbooks-login?chatSessionId={{ chatSessionId }}" class="button">
+                    Log in with QuickBooks
+                </a>
+            </div>
+        {% else %}
+            <div class="alert alert-success">
+                <strong>✅ QuickBooks Connected!</strong>
+                <p>You are successfully connected to QuickBooks.</p>
+            </div>
+
+            {% if not quickbooks_linked_to_chat %}
+                <div class="alert alert-danger">
+                    <strong>⚠️ QuickBooks is not linked to ChatGPT.</strong>
+                    <p>You're connected to QuickBooks, but this session is not linked to ChatGPT. Log in through ChatGPT to use QuickBooks data in conversations.</p>
+                </div>
+            {% endif %}
         {% endif %}
 
         <!-- Display Success Message -->
@@ -39,6 +52,14 @@
         <div class="status-container">
             <h3>Connection Status</h3>
             <p>QuickBooks: <span id="quickbooks-status">Checking...</span></p>
+            {% if not quickbooks_login_needed and not quickbooks_linked_to_chat %}
+                <p class="warning-text" style="color: red;">
+                ⚠️ QuickBooks is connected but NOT linked to ChatGPT. 
+                <a href="#" id="quickbooks-help-link" style="color: blue; text-decoration: underline;">Help</a>
+            </p>
+        {% endif %}
+
+
             <p>OpenAI: <span id="openai-status">Checking...</span></p>
         </div>
 
@@ -68,21 +89,29 @@
         async function checkQuickBooks() {
             try {
                 const response = await fetch('/business-info');
+                const data = await response.json();
+        
                 if (response.ok) {
-                    // success
                     document.getElementById('quickbooks-status').innerText = 'Connected';
                     document.getElementById('quickbooks-login-button').style.display = 'none';
+        
+                    // Check if QuickBooks is linked to ChatGPT
+                    if (data.quickbooks_linked_to_chat === false) {
+                        const warningText = document.createElement('p');
+                        warningText.innerText = '⚠️ QuickBooks is connected but NOT linked to ChatGPT.';
+                        warningText.style.color = 'red';
+                        document.querySelector('.status-container').appendChild(warningText);
+                    }
                 } else {
-                    // failure
                     document.getElementById('quickbooks-status').innerText = 'Disconnected';
                     document.getElementById('quickbooks-login-button').style.display = 'inline-block';
                 }
             } catch {
-                // network or other error
                 document.getElementById('quickbooks-status').innerText = 'Disconnected';
                 document.getElementById('quickbooks-login-button').style.display = 'inline-block';
             }
         }
+        
 
         // Check OpenAI connection status
         async function checkOpenAI() {
@@ -162,6 +191,42 @@
             const modal = document.getElementById('what-else-modal');
             modal.style.display = 'none';
         }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const helpLink = document.getElementById('quickbooks-help-link');
+            const modal = document.getElementById('quickbooks-help-modal');
+            const closeModal = document.getElementById('close-quickbooks-help');
+        
+            if (helpLink) {
+                helpLink.addEventListener('click', function (event) {
+                    event.preventDefault(); // Prevent default anchor behavior
+                    modal.style.display = 'block';
+                });
+            }
+        
+            if (closeModal) {
+                closeModal.addEventListener('click', function () {
+                    modal.style.display = 'none';
+                });
+            }
+        });
+        
     </script>
+
+        <!-- QuickBooks Help Modal -->
+    <div id="quickbooks-help-modal" class="modal">
+        <div class="modal-content">
+            <h2>QuickBooks ChatGPT Link Help</h2>
+            <p>Your QuickBooks account is connected, but it's not linked to this ChatGPT session.</p>
+            <p>To use QuickBooks data in ChatGPT, you need to log in through ChatGPT and connect your QuickBooks account there.</p>
+            <p><strong>Solution:</strong></p>
+            <ul>
+                <li>Go back to ChatGPT and start a new conversation.</li>
+                <li>Click the "Log in with QuickBooks" button from ChatGPT.</li>
+                <li>Ensure you're using the same QuickBooks account.</li>
+            </ul>
+            <button id="close-quickbooks-help">Close</button>
+        </div>
+    </div>
 </div>
 {% endblock %}
