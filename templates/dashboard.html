@@ -85,32 +85,28 @@
     </div>
 
     <script>
-        // Check QuickBooks connection status
-        async function checkQuickBooks() {
-            try {
-                const response = await fetch('/business-info');
-                const data = await response.json();
-        
-                if (response.ok) {
-                    document.getElementById('quickbooks-status').innerText = 'Connected';
-                    document.getElementById('quickbooks-login-button').style.display = 'none';
-        
-                    // Check if QuickBooks is linked to ChatGPT
-                    if (data.quickbooks_linked_to_chat === false) {
-                        const warningText = document.createElement('p');
-                        warningText.innerText = '⚠️ QuickBooks is connected but NOT linked to ChatGPT.';
-                        warningText.style.color = 'red';
-                        document.querySelector('.status-container').appendChild(warningText);
-                    }
-                } else {
-                    document.getElementById('quickbooks-status').innerText = 'Disconnected';
-                    document.getElementById('quickbooks-login-button').style.display = 'inline-block';
-                }
-            } catch {
-                document.getElementById('quickbooks-status').innerText = 'Disconnected';
-                document.getElementById('quickbooks-login-button').style.display = 'inline-block';
+        // Update QuickBooks status display on page load
+    document.addEventListener('DOMContentLoaded', function () {
+        const quickbooksStatus = document.getElementById('quickbooks-status');
+        const quickbooksLoginButton = document.getElementById('quickbooks-login-button');
+    
+        const quickbooksLoginNeeded = "{{ quickbooks_login_needed }}" === "True";
+        const quickbooksLinkedToChat = "{{ quickbooks_linked_to_chat }}" === "True";
+
+        if (!quickbooksLoginNeeded) {
+            quickbooksStatus.innerText = 'Connected';
+            if (quickbooksLoginButton) quickbooksLoginButton.style.display = 'none';
+
+            // If connected but NOT linked to ChatGPT, show warning
+            if (!quickbooksLinkedToChat) {
+                quickbooksStatus.innerHTML += `<span style="color: red;"> ⚠️ Not linked to ChatGPT</span>`;
             }
+        } else {
+            quickbooksStatus.innerText = 'Disconnected';
+            if (quickbooksLoginButton) quickbooksLoginButton.style.display = 'inline-block';
         }
+    });
+
         
 
         // Check OpenAI connection status
