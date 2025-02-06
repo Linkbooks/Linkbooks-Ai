@@ -1916,24 +1916,21 @@ def dashboard():
 
         if chat_session_id:
             try:
-                # Query Supabase for the newest row matching the chat_session_id
+                # Query Supabase for the newest row matching both this chat_session_id and user_id
                 response = supabase.table("chatgpt_oauth_states") \
                     .select("chat_session_id, user_id, is_authenticated, expiry") \
                     .eq("chat_session_id", chat_session_id) \
+                    .eq("user_id", user_id) \
                     .order("expiry", desc=True) \
                     .limit(1) \
                     .execute()
 
                 logging.info(f"Supabase latest-row response for chatSessionId {chat_session_id}: {response.data}")
 
-                # Only check this single newest row
+                # Only check the single newest row for that user
                 if response.data and len(response.data) == 1:
                     row = response.data[0]
-                    if (
-                        row["chat_session_id"] == chat_session_id
-                        and row.get("user_id") == user_id
-                        and row.get("is_authenticated") is True
-                    ):
+                    if row.get("is_authenticated") is True:
                         quickbooks_login_needed = False
                         quickbooks_linked_to_chat = True
                         logging.info(f"QuickBooks is connected for chatSessionId: {chat_session_id}")
