@@ -1906,29 +1906,41 @@ def dashboard():
                 chatSessionId=chat_session_id
             )
 
-        # Attempt to fetch QuickBooks data
-        try:
-            company_info = get_company_info(user_id)
-            return render_template(
-                'dashboard.html',
-                data=company_info,
-                success_message=success_message,
-                quickbooks_login_needed=False,
-                chatSessionId=chat_session_id
-            )
-        except Exception as e:
-            logging.warning(f"Error fetching QuickBooks data: {e}")
-            return render_template(
-                'dashboard.html',
-                success_message=success_message,
-                quickbooks_login_needed=True,
-                chatSessionId=chat_session_id
-            )
+        # ---------------------------------------------#
+        # NEW: Check QuickBooks authentication status
+        # ---------------------------------------------#
+        quickbooks_login_needed = True  # Default to "not connected"
+
+        if chat_session_id:
+            try:
+                # Query Supabase to check if `is_authenticated` is TRUE for this chatSessionId
+                response = supabase.table("chatgpt_oauth_states").select("is_authenticated").eq("chat_session_id", chat_session_id).execute()
+                
+                if response.data:
+                    is_authenticated = response.data[0].get("is_authenticated", False)
+                    
+                    if is_authenticated:  # If TRUE, user is authenticated
+                        quickbooks_login_needed = False
+                        logging.info(f"QuickBooks is connected for chatSessionId: {chat_session_id}")
+                    else:
+                        logging.info(f"QuickBooks is NOT connected for chatSessionId: {chat_session_id}")
+
+            except Exception as e:
+                logging.error(f"Error checking QuickBooks authentication status: {e}")
+
+        # ---------------------------
+        # Render dashboard with updated QuickBooks connection status
+        # ---------------------------
+        return render_template(
+            'dashboard.html',
+            success_message=success_message,
+            quickbooks_login_needed=quickbooks_login_needed,
+            chatSessionId=chat_session_id
+        )
 
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
-
 
 
 # ------------------------------------------
