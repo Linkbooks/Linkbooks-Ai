@@ -1916,25 +1916,31 @@ def dashboard():
 
         if chat_session_id:
             try:
-                # Query Supabase for this exact chatSessionId
-                response = supabase.table("chatgpt_oauth_states").select("chat_session_id", "is_authenticated").eq("chat_session_id", chat_session_id).execute()
+                # Query Supabase for the newest row matching the chat_session_id
+                response = supabase.table("chatgpt_oauth_states") \
+                    .select("chat_session_id, user_id, is_authenticated, expiry") \
+                    .eq("chat_session_id", chat_session_id) \
+                    .order("expiry", desc=True) \
+                    .limit(1) \
+                    .execute()
 
-                logging.info(f"Supabase response for chatSessionId {chat_session_id}: {response.data}")  # Debugging step
+                logging.info(f"Supabase latest-row response for chatSessionId {chat_session_id}: {response.data}")
 
-                # Ensure we only check the row that matches this chat_session_id
-                if response.data and any(
-                    row["chat_session_id"] == chat_session_id and row.get("is_authenticated") is True 
-                    for row in response.data
-                ):
-                    quickbooks_login_needed = False  # Mark QuickBooks as connected
-                    quickbooks_linked_to_chat = True  # It's properly linked
-                    logging.info(f"QuickBooks is connected for chatSessionId: {chat_session_id}")
-                else:
-                    logging.info(f"QuickBooks is NOT connected for chatSessionId: {chat_session_id}")
-
+                # Only check this single newest row
+                if response.data and len(response.data) == 1:
+                    row = response.data[0]
+                    if (
+                        row["chat_session_id"] == chat_session_id
+                        and row.get("user_id") == user_id
+                        and row.get("is_authenticated") is True
+                    ):
+                        quickbooks_login_needed = False
+                        quickbooks_linked_to_chat = True
+                        logging.info(f"QuickBooks is connected for chatSessionId: {chat_session_id}")
+                    else:
+                        logging.info(f"QuickBooks is NOT connected for chatSessionId: {chat_session_id}")
             except Exception as e:
                 logging.error(f"Error checking QuickBooks authentication status: {e}")
-
 
         # --- New Fallback: Check quickbooks_tokens if no chatSessionId ---
         if quickbooks_login_needed and not chat_session_id:
