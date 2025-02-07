@@ -1318,10 +1318,11 @@ def fetch_user_data():
 def quickbooks_login():
     """
     Initiates QuickBooks OAuth, ensuring linkage between user and tokens.
-    No longer relies on chatSessionId in any way.
+    ✅ Only updates existing states—NO new rows.
+    ✅ Applies changes to all active chat sessions for the user.
     """
     try:
-        # 1) Extract and decode session token for user-based logic
+        # 1) Extract and decode session token
         session_token = request.cookies.get('session_token')
         if not session_token:
             return jsonify({"error": "User not authenticated. Please log in first."}), 401
@@ -1329,7 +1330,7 @@ def quickbooks_login():
         try:
             decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
-            return jsonify({"error": "Session token has expired. Please log in again."}), 401
+            return jsonify({"error": "Session token expired. Please log in again."}), 401
         except jwt.InvalidTokenError:
             return jsonify({"error": "Invalid session token. Please log in again."}), 401
 
@@ -1341,15 +1342,18 @@ def quickbooks_login():
         state = generate_random_state()
         expiry = datetime.utcnow() + timedelta(minutes=30)
 
-        # ✅ Only store state and user_id—NO chatSessionId!
-        supabase.table("chatgpt_oauth_states").upsert({
-            "user_id": user_id,
+        # ✅ Only UPDATE existing chat sessions for this user, don't insert new ones
+        response = supabase.table("chatgpt_oauth_states").update({
             "state": state,
             "expiry": expiry.isoformat(),
             "is_authenticated": False  # Reset authentication until OAuth completes
-        }, on_conflict=["user_id"]).execute()
+        }).eq("user_id", user_id).execute()
 
-        logging.info(f"Stored OAuth state {state} for user {user_id}")
+        if response.error:
+            logging.error(f"Failed to update OAuth state for user {user_id}")
+            return jsonify({"error": "Failed to update OAuth state."}), 500
+
+        logging.info(f"Updated OAuth state {state} for user {user_id}")
 
         # 3) Construct the QuickBooks OAuth URL with the stored 'state'
         auth_url = (
@@ -1368,8 +1372,6 @@ def quickbooks_login():
     except Exception as e:
         logging.error(f"Error in /quickbooks-login: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-
-
 
 
 
