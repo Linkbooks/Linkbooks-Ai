@@ -41,11 +41,26 @@
         </div>
 
         <!-- ✅ NEW: ChatGPT Active Sessions Section -->
+        <!-- ✅ Updated: ChatGPT Active Sessions Section -->
         <div class="status-container">
             <h3>ChatGPT Sessions</h3>
-            <p>Active Sessions: <span id="chatgpt-session-count">Checking...</span></p>
-            <ul id="chatgpt-sessions-list"></ul>
+            <p>Active Sessions: <span id="chatgpt-session-count">{{ chatgpt_sessions|length }}</span></p>
+    
+            {% if chatgpt_sessions %}
+                <ul id="chatgpt-sessions-list">
+                    {% for session in chatgpt_sessions %}
+                        <li>
+                            <strong>Session {{ loop.index }}:</strong> 
+                            {{ session.chatSessionId }} 
+                            (Created: {{ session.createdAt|datetimeformat }})
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No active ChatGPT sessions.</p>
+            {% endif %}
         </div>
+
 
 
         <!-- Buttons Section -->
@@ -106,16 +121,17 @@
                 if (response.ok && result.sessions.length > 0) {
                     sessionCount.innerText = result.sessions.length;
                     sessionList.innerHTML = "";  // Clear previous entries
-        
+                    // Display each session with Created_At time
                     result.sessions.forEach((session, index) => {
                         const listItem = document.createElement("li");
                         listItem.innerHTML = `
                             <strong>Session ${index + 1}:</strong> 
                             ${session.chatSessionId} 
-                            (Expires: ${new Date(session.expiry).toLocaleString()})
+                            (Created: ${new Date(session.createdAt).toLocaleString()})
                         `;
                         sessionList.appendChild(listItem);
                     });
+                    
                 } else {
                     sessionCount.innerText = "0";
                     sessionList.innerHTML = '<li>No active ChatGPT sessions.</li>';
