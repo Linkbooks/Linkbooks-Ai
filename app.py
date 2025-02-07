@@ -1897,30 +1897,57 @@ def dashboard():
                 logging.info(f"No QuickBooks tokens found for user {user_id}.")
         except Exception as e:
             logging.error(f"Error checking QuickBooks token status for user {user_id}: {e}")
-            
+
+        # ---------------------------
         # Fetch active ChatGPT sessions from `chatgpt_oauth_states`
+        # ---------------------------
         chatgpt_sessions = []
         try:
             session_response = supabase.table("chatgpt_oauth_states") \
                 .select("chat_session_id, expiry") \
                 .eq("user_id", user_id) \
-                .gt("expiry", datetime.utcnow().isoformat()) \
-                .order("expiry", desc=True) \
-                .execute()
+                .execute()  # 🔧 Fetch everything first
 
-            if session_response.data:
-                chatgpt_sessions = [
-                    {
-                        "chatSessionId": session["chat_session_id"],
-                        "expiry": session["expiry"]
-                    }
-                    for session in session_response.data
-                ]
-                logging.info(f"Found {len(chatgpt_sessions)} active ChatGPT sessions for user {user_id}.")
-            else:
-                logging.info(f"No active ChatGPT sessions found for user {user_id}.")
+            logging.info(f"Raw Supabase Response: {session_response.data}")  # 🔍 Debugging
+
+            # Convert expiry timestamps manually
+            active_sessions = []
+            for session in session_response.data:
+                expiry_dt = datetime.fromisoformat(session["expiry"])
+                if expiry_dt > datetime.utcnow():
+                    active_sessions.append(session)
+
+            # Ensure only sessions with chat_session_id are counted
+            chatgpt_sessions = [
+                {
+                    "chatSessionId": str(session["chat_session_id"]) if isinstance(session["chat_session_id"], uuid.UUID) else session["chat_session_id"],
+                    "expiry": session["expiry"]
+                }
+                for session in active_sessions
+                if session.get("chat_session_id")  # 🔧 Ignore NULL values
+            ]
+
+            logging.info(f"Filtered Active Sessions: {chatgpt_sessions}")
+
         except Exception as e:
             logging.error(f"Error fetching ChatGPT session status: {e}")
+
+        # ---------------------------
+        # Render dashboard with updated QuickBooks connection status
+        # ---------------------------
+        return render_template(
+            'dashboard.html',
+            success_message=success_message,
+            quickbooks_login_needed=quickbooks_login_needed,
+            chatSessionId=chat_session_id,
+            chatgpt_sessions=chatgpt_sessions
+        )
+
+    except Exception as e:
+        logging.error(f"Error in /dashboard: {e}", exc_info=True)
+        return {"error": str(e)}, 500
+
+
         
 
         # ---------------------------
@@ -2147,18 +2174,26 @@ def audit():
             return jsonify({"error": "Company info is empty or unavailable."}), 404
 
         # -- Fetch relevant financial reports --
+        # Fetch relevant financial reports
         reports_to_fetch = ["ProfitAndLoss", "BalanceSheet", "CashFlow"]
         report_data = {}
+        failed_reports = []
 
         for report in reports_to_fetch:
             try:
                 report_data[report] = fetch_report(user_id, report)
             except Exception as e:
                 logging.warning(f"Could not fetch {report}: {e}")
+                failed_reports.append(report)
 
+        # ✅ Instead of failing if all reports are missing, return what we got.
         if not report_data:
-            logging.error("No financial reports retrieved.")
-            return jsonify({"error": "Could not retrieve financial reports. Ensure QuickBooks is connected."}), 500
+            return jsonify({
+                "warning": "No financial reports could be retrieved. Ensure QuickBooks is connected.",
+                "reports": {},
+                "failedReports": failed_reports
+            }), 200  # ✅ Return a success response with warning instead of failing
+
 
         # -- Construct AI Prompt for Financial Analysis --
         prompt = (
