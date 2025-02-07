@@ -1968,7 +1968,6 @@ def fetch_chatgpt_sessions():
         session_response = supabase.table("chatgpt_oauth_states") \
             .select("chat_session_id, expiry") \
             .eq("user_id", user_id) \
-            .gt("expiry", datetime.utcnow().isoformat()) \
             .execute()
 
         # Ensure only valid sessions are included
