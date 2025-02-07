@@ -1939,7 +1939,7 @@ def dashboard():
             'dashboard.html',
             success_message=success_message,
             quickbooks_login_needed=quickbooks_login_needed,
-            chatSessionId=chat_session_id,
+            chatSessionId=chat_session_id or "",  # Ensure non-None value
             chatgpt_sessions=chatgpt_sessions
         )
 
@@ -1947,25 +1947,45 @@ def dashboard():
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500
 
+#-------------Dashboard Helper Routes-------------#
+@app.route('/fetch-chatgpt-sessions', methods=['GET'])
+def fetch_chatgpt_sessions():
+    """
+    Returns all active ChatGPT sessions for the logged-in user.
+    """
+    try:
+        # Get user_id from session token
+        token = request.cookies.get('session_token')
+        if not token:
+            return jsonify({"error": "User not authenticated"}), 401
 
-        
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        user_id = decoded.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Invalid session token"}), 401
 
-        # ---------------------------
-        # Render dashboard with updated QuickBooks connection status
-        # ---------------------------
-        return render_template(
-            'dashboard.html',
-            success_message=success_message,
-            quickbooks_login_needed=quickbooks_login_needed,
-            chatSessionId=chat_session_id,
-            chatgpt_sessions=chatgpt_sessions
-        )
-        
-        
+        # Fetch ChatGPT sessions from Supabase
+        session_response = supabase.table("chatgpt_oauth_states") \
+            .select("chat_session_id, expiry") \
+            .eq("user_id", user_id) \
+            .gt("expiry", datetime.utcnow().isoformat()) \
+            .execute()
+
+        # Ensure only valid sessions are included
+        chatgpt_sessions = [
+            {
+                "chatSessionId": str(session["chat_session_id"]),
+                "expiry": session["expiry"]
+            }
+            for session in session_response.data
+            if session.get("chat_session_id")  # Ignore NULL values
+        ]
+
+        return jsonify({"sessions": chatgpt_sessions}), 200
+
     except Exception as e:
-        logging.error(f"Error in /dashboard: {e}", exc_info=True)
-        return {"error": str(e)}, 500
-
+        logging.error(f"Error in /fetch-chatgpt-sessions: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ------------------------------------------

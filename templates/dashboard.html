@@ -96,31 +96,23 @@
     
         // ✅ Fetch active ChatGPT sessions and display them
         async function checkChatGPTSessions() {
-            const chatSessionId = document.getElementById('chatSessionId')?.value;
             const sessionCount = document.getElementById('chatgpt-session-count');
             const sessionList = document.getElementById('chatgpt-sessions-list');
-    
-            if (!chatSessionId) {
-                sessionCount.innerText = 'No active sessions';
-                sessionList.innerHTML = '<li>No active ChatGPT sessions.</li>';
-                return;
-            }
-    
+        
             try {
-                const response = await fetch(`/session/status?chatSessionId=${encodeURIComponent(chatSessionId)}`);
+                const response = await fetch('/fetch-chatgpt-sessions'); // ✅ New route to return all sessions
                 const result = await response.json();
-    
-                if (response.ok && result.authenticated && result.sessions.length > 0) {
+        
+                if (response.ok && result.sessions.length > 0) {
                     sessionCount.innerText = result.sessions.length;
                     sessionList.innerHTML = "";  // Clear previous entries
-    
+        
                     result.sessions.forEach((session, index) => {
                         const listItem = document.createElement("li");
                         listItem.innerHTML = `
                             <strong>Session ${index + 1}:</strong> 
                             ${session.chatSessionId} 
                             (Expires: ${new Date(session.expiry).toLocaleString()})
-                            ${session.isNewest ? '<span style="color: green; font-weight: bold;"> [NEW]</span>' : ''}
                         `;
                         sessionList.appendChild(listItem);
                     });
@@ -134,6 +126,7 @@
                 sessionList.innerHTML = '<li>Failed to load sessions.</li>';
             }
         }
+        
     
         // ✅ Dynamically update QuickBooks login button with chatSessionId
         function updateQuickBooksLoginButton() {
