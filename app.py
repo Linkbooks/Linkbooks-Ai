@@ -1929,7 +1929,7 @@ def dashboard():
                 {
                     "chatSessionId": str(session["chat_session_id"]) if isinstance(session["chat_session_id"], uuid.UUID) else session["chat_session_id"],
                     "expiry": session["expiry"],
-                    "createdAt": session["created_at"]  # ✅ Include created_at timestamp
+                    "createdAt": session.get("created_at")  # 🔥 Add this field
                 }
                 for session in active_sessions
                 if session.get("chat_session_id")  # 🔧 Ignore NULL values
