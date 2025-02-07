@@ -190,6 +190,13 @@ limiter = Limiter(
 )
 limiter.init_app(app)
 
+#-------------------------  Custom Jinja Filter  ------------------------------#
+@app.template_filter('datetimeformat')
+def datetimeformat(value, format='%Y-%m-%d %H:%M:%S'):
+    if not value:
+        return "N/A"
+    return datetime.fromisoformat(value).strftime(format)
+
 
 # ------------------------------------------------------------------------------
 # Configure Stripe
@@ -561,6 +568,8 @@ def revoke_quickbooks_tokens(refresh_token):
     except Exception as e:
         logging.error(f"Error revoking tokens: {e}")
         raise
+    
+
 
 # ------------------------------------------------------------------------------
 # Optional store_state() - if used anywhere, ensure it supplies a non-null 'state'
@@ -832,8 +841,6 @@ def login():
         logging.error(f"Error during login: {e}", exc_info=True)
         error_message = "An unexpected error occurred during login. Please try again."
         return render_template('login.html', error_message=error_message), 500
-
-
 
 
 # ------------------------------------------
@@ -1904,7 +1911,7 @@ def dashboard():
         chatgpt_sessions = []
         try:
             session_response = supabase.table("chatgpt_oauth_states") \
-                .select("chat_session_id, expiry") \
+                .select("chat_session_id, expiry, created_at") \
                 .eq("user_id", user_id) \
                 .execute()  # 🔧 Fetch everything first
 
@@ -1921,7 +1928,8 @@ def dashboard():
             chatgpt_sessions = [
                 {
                     "chatSessionId": str(session["chat_session_id"]) if isinstance(session["chat_session_id"], uuid.UUID) else session["chat_session_id"],
-                    "expiry": session["expiry"]
+                    "expiry": session["expiry"],
+                    "createdAt": session["created_at"]  # ✅ Include created_at timestamp
                 }
                 for session in active_sessions
                 if session.get("chat_session_id")  # 🔧 Ignore NULL values
