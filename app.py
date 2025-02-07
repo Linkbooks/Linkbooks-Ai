@@ -1479,7 +1479,7 @@ def start_oauth_for_chatgpt():
             "state": state,
             "expiry": expiry,
             "is_authenticated": is_already_authenticated  # 👈 Inherit authentication status
-        }).execute()
+        }, on_conflict=["chat_session_id"]).execute()  # 🔥 Fixes duplicate key error!
 
         # ✅ If already authenticated, return success immediately
         if is_already_authenticated:
