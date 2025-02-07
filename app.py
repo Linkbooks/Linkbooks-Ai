@@ -1974,7 +1974,7 @@ def fetch_chatgpt_sessions():
 
         # Fetch ChatGPT sessions from Supabase
         session_response = supabase.table("chatgpt_oauth_states") \
-            .select("chat_session_id, expiry") \
+            .select("chat_session_id, created_at, expiry") \
             .eq("user_id", user_id) \
             .execute()
 
@@ -1982,6 +1982,7 @@ def fetch_chatgpt_sessions():
         chatgpt_sessions = [
             {
                 "chatSessionId": str(session["chat_session_id"]),
+                "createdAt": session.get("created_at"),
                 "expiry": session["expiry"]
             }
             for session in session_response.data
