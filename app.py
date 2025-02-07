@@ -1607,43 +1607,30 @@ def link_chat_session():
 @app.route('/session/status', methods=['GET'])
 def get_session_status():
     """
-    Fetches all active ChatGPT sessions, sorted by expiry (most recent first).
+    Checks if a ChatGPT session is active by looking for tokens in chatgpt_tokens.
     """
     try:
-        # Query all valid chat sessions from the database
-        response = (
-            supabase.table("chatgpt_tokens")
-            .select("chat_session_id, expiry")
-            .gt("expiry", datetime.utcnow().isoformat())  # Only get non-expired sessions
-            .order("expiry", desc=True)  # Sort by expiry (latest first)
-            .execute()
-        )
+        chat_session_id = request.args.get('chatSessionId')
+        if not chat_session_id:
+            return jsonify({"authenticated": False, "message": "chatSessionId is required"}), 400
 
+        response = supabase.table("chatgpt_tokens").select("*").eq("chat_session_id", chat_session_id).execute()
         if not response.data:
-            logging.warning("No active ChatGPT sessions found.")
-            return jsonify({"authenticated": False, "message": "No active ChatGPT sessions."}), 401
+            logging.warning(f"No tokens found for chatSessionId {chat_session_id}.")
+            return jsonify({"authenticated": False, "message": "No tokens found. Please log in."}), 401
 
-        # Format response: latest session first, list all active sessions
-        session_list = [
-            {
-                "chatSessionId": session["chat_session_id"],
-                "expiry": session["expiry"],
-                "isNewest": (index == 0),  # Mark the most recent session
-            }
-            for index, session in enumerate(response.data)
-        ]
+        tokens = response.data[0]
+        expiry = datetime.fromisoformat(tokens['expiry'])
+        if datetime.utcnow() > expiry:
+            logging.info(f"Access token for chatSessionId {chat_session_id} expired.")
+            return jsonify({"authenticated": False, "message": "Session expired. Please reauthenticate."}), 401
 
-        logging.info(f"Active ChatGPT sessions: {session_list}")
-
-        return jsonify({
-            "authenticated": True,
-            "message": "Active ChatGPT sessions found.",
-            "sessions": session_list
-        }), 200
+        logging.info(f"Session {chat_session_id} is active and authenticated.")
+        return jsonify({"authenticated": True, "message": "Session is active."}), 200
 
     except Exception as e:
-        logging.error(f"Error in /session/status: {e}", exc_info=True)
-        return jsonify({"authenticated": False, "message": "An error occurred while retrieving session data."}), 500
+        logging.error(f"Error in /session/status: {e}")
+        return jsonify({"authenticated": False, "message": "An unexpected error occurred. Try again later."}), 500
 
 
 def refresh_access_token_for_chatgpt(chat_session_id, refresh_token):
@@ -1867,7 +1854,7 @@ def settings():
 def dashboard():
     """
     Dashboard route that checks QuickBooks authentication status.
-    Now only checks QuickBooks access via `user_id`, not `chatSessionId`.
+    Retrieves valid ChatGPT sessions from `chatgpt_oauth_states`, sorted by expiry.
     """
     try:
         # Retrieve query parameters
@@ -1895,7 +1882,7 @@ def dashboard():
             return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True, chatSessionId=chat_session_id)
 
         # ---------------------------
-        # ✅ SIMPLIFIED QuickBooks Authentication Check
+        # QuickBooks Authentication Check
         # ---------------------------
         quickbooks_login_needed = True  # Default to "not connected"
 
@@ -1914,6 +1901,31 @@ def dashboard():
                 logging.info(f"No QuickBooks tokens found for user {user_id}.")
         except Exception as e:
             logging.error(f"Error checking QuickBooks token status for user {user_id}: {e}")
+            
+        # Fetch active ChatGPT sessions from `chatgpt_oauth_states`
+        chatgpt_sessions = []
+        try:
+            session_response = supabase.table("chatgpt_oauth_states") \
+                .select("chat_session_id, expiry") \
+                .eq("user_id", user_id) \
+                .gt("expiry", datetime.utcnow().isoformat()) \
+                .order("expiry", desc=True) \
+                .execute()
+
+            if session_response.data:
+                chatgpt_sessions = [
+                    {
+                        "chatSessionId": session["chat_session_id"],
+                        "expiry": session["expiry"]
+                    }
+                    for session in session_response.data
+                ]
+                logging.info(f"Found {len(chatgpt_sessions)} active ChatGPT sessions for user {user_id}.")
+            else:
+                logging.info(f"No active ChatGPT sessions found for user {user_id}.")
+        except Exception as e:
+            logging.error(f"Error fetching ChatGPT session status: {e}")
+        
 
         # ---------------------------
         # Render dashboard with updated QuickBooks connection status
@@ -1922,9 +1934,11 @@ def dashboard():
             'dashboard.html',
             success_message=success_message,
             quickbooks_login_needed=quickbooks_login_needed,
-            chatSessionId=chat_session_id  # Still used for session tracking but not required for authentication
+            chatSessionId=chat_session_id,
+            chatgpt_sessions=chatgpt_sessions
         )
-
+        
+        
     except Exception as e:
         logging.error(f"Error in /dashboard: {e}", exc_info=True)
         return {"error": str(e)}, 500

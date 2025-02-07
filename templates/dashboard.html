@@ -72,53 +72,48 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            checkQuickBooksStatus();  // ✅ Check QuickBooks connection
+            updateQuickBooksStatus();  // ✅ Read QuickBooks connection status from the page
             checkChatGPTSessions();   // ✅ Fetch ChatGPT session data
             updateQuickBooksLoginButton(); // ✅ Update QuickBooks login button dynamically
         });
-        
-        // ✅ Fetch QuickBooks status & update UI
-        async function checkQuickBooksStatus() {
+    
+        // ✅ Read QuickBooks status from the dashboard page
+        function updateQuickBooksStatus() {
             const quickbooksStatus = document.getElementById('quickbooks-status');
             const quickbooksLoginButton = document.getElementById('quickbooks-login-button');
-        
-            try {
-                const response = await fetch('/quickbooks/status'); // Example API route to check status
-                const result = await response.json();
-        
-                if (response.ok && result.connected) {
-                    quickbooksStatus.innerText = 'Connected';
-                    if (quickbooksLoginButton) quickbooksLoginButton.style.display = 'none';
-                } else {
-                    quickbooksStatus.innerText = 'Disconnected';
-                    if (quickbooksLoginButton) quickbooksLoginButton.style.display = 'inline-block';
-                }
-            } catch (error) {
-                console.error("Error checking QuickBooks status:", error);
-                quickbooksStatus.innerText = "Error checking QuickBooks.";
+    
+            // **Read QuickBooks status from the template (passed from Flask)**
+            const quickbooksLoginNeeded = "{{ quickbooks_login_needed }}" === "True";
+    
+            if (!quickbooksLoginNeeded) {
+                quickbooksStatus.innerText = 'Connected';
+                if (quickbooksLoginButton) quickbooksLoginButton.style.display = 'none';
+            } else {
+                quickbooksStatus.innerText = 'Disconnected';
+                if (quickbooksLoginButton) quickbooksLoginButton.style.display = 'inline-block';
             }
         }
-        
+    
         // ✅ Fetch active ChatGPT sessions and display them
         async function checkChatGPTSessions() {
             const chatSessionId = document.getElementById('chatSessionId')?.value;
             const sessionCount = document.getElementById('chatgpt-session-count');
             const sessionList = document.getElementById('chatgpt-sessions-list');
-        
+    
             if (!chatSessionId) {
                 sessionCount.innerText = 'No active sessions';
                 sessionList.innerHTML = '<li>No active ChatGPT sessions.</li>';
                 return;
             }
-        
+    
             try {
                 const response = await fetch(`/session/status?chatSessionId=${encodeURIComponent(chatSessionId)}`);
                 const result = await response.json();
-        
+    
                 if (response.ok && result.authenticated && result.sessions.length > 0) {
                     sessionCount.innerText = result.sessions.length;
                     sessionList.innerHTML = "";  // Clear previous entries
-        
+    
                     result.sessions.forEach((session, index) => {
                         const listItem = document.createElement("li");
                         listItem.innerHTML = `
@@ -139,31 +134,31 @@
                 sessionList.innerHTML = '<li>Failed to load sessions.</li>';
             }
         }
-        
+    
         // ✅ Dynamically update QuickBooks login button with chatSessionId
         function updateQuickBooksLoginButton() {
             const button = document.getElementById('quickbooks-login-button');
             const urlParams = new URLSearchParams(window.location.search);
             const chatSessionId = urlParams.get('chatSessionId');
-        
+    
             if (chatSessionId && button) {
                 button.href = `/quickbooks-login?chatSessionId=${encodeURIComponent(chatSessionId)}`;
             }
         }
-        
+    
         // ✅ Close QuickBooks authorization success banner
         document.addEventListener('DOMContentLoaded', function () {
             const closeBtn = document.getElementById('qb-success-close');
             const qbStatus = document.getElementById('quickbooks-status');
             const qbLoginButton = document.getElementById('quickbooks-login-button');
             const banner = document.getElementById('qb-success-banner');
-        
+    
             if (banner) {
                 qbStatus.innerText = 'Connected';
                 if (qbLoginButton) {
                     qbLoginButton.style.display = 'none';
                 }
-        
+    
                 if (closeBtn) {
                     closeBtn.addEventListener('click', () => {
                         banner.style.display = 'none';
@@ -171,12 +166,12 @@
                 }
             }
         });
-        
+    
         // ✅ "What Else Can I Do?" Modal
         function openWhatElseModal() {
             const modal = document.getElementById('what-else-modal');
             const modalContent = document.getElementById('what-else-modal-content');
-        
+    
             modalContent.innerHTML = `
                 <h2>What Else Can I Do?</h2>
                 <p>Linkbooks AI offers several powerful features:</p>
@@ -187,14 +182,15 @@
                     <li>Use AI-powered chat to ask questions about your business</li>
                 </ul>
             `;
-        
+    
             modal.style.display = 'block';
         }
-        
+    
         function closeWhatElseModal() {
             document.getElementById('what-else-modal').style.display = 'none';
         }
-        </script>
+    </script>
+    
         
 
         <!-- QuickBooks Help Modal -->
