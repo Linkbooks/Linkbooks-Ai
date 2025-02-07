@@ -1349,8 +1349,9 @@ def quickbooks_login():
             "is_authenticated": False  # Reset authentication until OAuth completes
         }).eq("user_id", user_id).execute()
 
-        if response.error:
-            logging.error(f"Failed to update OAuth state for user {user_id}")
+        # ✅ FIX: Handle response correctly
+        if response.status_code != 200:
+            logging.error(f"Failed to update OAuth state for user {user_id}, Response: {response}")
             return jsonify({"error": "Failed to update OAuth state."}), 500
 
         logging.info(f"Updated OAuth state {state} for user {user_id}")
@@ -1372,6 +1373,7 @@ def quickbooks_login():
     except Exception as e:
         logging.error(f"Error in /quickbooks-login: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 
 
