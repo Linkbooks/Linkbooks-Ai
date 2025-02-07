@@ -1944,20 +1944,14 @@ def fetch_reports_route():
                 logging.error("Invalid session token.")
                 return jsonify({"error": "Invalid session token. Please log in again."}), 401
 
-        # 2) If no user_id from session_token, but we do have a chat_session_id,
-        #    look up the user_id in quickbooks_tokens or user_profiles
+        # 2) If no user_id from session_token, but we have chatSessionId, find user_id from user_profiles
         if not user_id and chat_session_id:
-            # This example: we fetch user_id from user_profiles or quickbooks_tokens
-            tokens_response = supabase.table("quickbooks_tokens").select("user_id").eq("chat_session_id", chat_session_id).execute()
-            if tokens_response.data:
-                user_id = tokens_response.data[0]["user_id"]
+            user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+            if user_lookup.data:
+                user_id = user_lookup.data[0]["id"]
             else:
-                # or check user_profiles if you prefer
-                # For instance:
-                # user_profile = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
-                # if user_profile.data:
-                #     user_id = user_profile.data[0]["id"]
-                pass
+                logging.error(f"No user found for chatSessionId: {chat_session_id}")
+                return jsonify({"error": "User not found for given chatSessionId"}), 404
 
         if not user_id:
             logging.error("No user_id found via session token or chat_session_id.")
@@ -1985,6 +1979,7 @@ def fetch_reports_route():
     except Exception as e:
         logging.error(f"Error in /fetch-reports: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 # ------------------------------------------
@@ -2015,25 +2010,27 @@ def business_info():
                 logging.error("Invalid session token.")
                 return jsonify({"error": "Invalid session token. Please log in again."}), 401
 
-        # -- Fetch tokens using chat_session_id or user_id --
-        if chat_session_id:
-            tokens_response = supabase.table("quickbooks_tokens").select("*").eq("chat_session_id", chat_session_id).execute()
-        elif user_id:
-            tokens_response = supabase.table("quickbooks_tokens").select("*").eq("user_id", user_id).execute()
-        else:
+        # -- If chatSessionId is provided, find the user_id first --
+        if chat_session_id and not user_id:
+            user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+            if user_lookup.data:
+                user_id = user_lookup.data[0]["id"]
+            else:
+                logging.error(f"No user found for chatSessionId: {chat_session_id}")
+                return jsonify({"error": "User not found for given chatSessionId"}), 404
+
+        if not user_id:
             logging.error("No valid identifier for token retrieval.")
             return jsonify({"error": "No valid identifier for token retrieval."}), 400
 
+        # -- Fetch QuickBooks tokens using user_id --
+        tokens_response = supabase.table("quickbooks_tokens").select("*").eq("user_id", user_id).execute()
+
         if not tokens_response.data:
-            logging.error(f"No tokens found for identifier: chatSessionId={chat_session_id}, userId={user_id}")
+            logging.error(f"No tokens found for user {user_id}")
             return jsonify({"error": "No QuickBooks tokens found. Please log in again."}), 404
 
         tokens = tokens_response.data[0]
-
-        # If we haven't set user_id from session_token, but the row has it, pull it out:
-        if not user_id:
-            user_id = tokens["user_id"]
-
         access_token = tokens["access_token"]
         realm_id = tokens["realm_id"]
         expiry = tokens["token_expiry"]
@@ -2046,25 +2043,20 @@ def business_info():
         if expiry and datetime.utcnow() > datetime.fromisoformat(expiry):
             logging.info("Access token expired. Attempting refresh...")
             try:
-                # If your refresh function is user-based
-                refresh_access_token(user_id)  
-                # Then re-fetch updated tokens
+                refresh_access_token(user_id)  # Refresh the token
                 updated_tokens = supabase.table("quickbooks_tokens").select("*").eq("user_id", user_id).execute()
                 if updated_tokens.data:
-                    new_data = updated_tokens.data[0]
-                    access_token = new_data["access_token"]
-                    realm_id = new_data["realm_id"]
+                    access_token = updated_tokens.data[0]["access_token"]
+                    realm_id = updated_tokens.data[0]["realm_id"]
                 else:
                     raise Exception("No updated tokens after refresh.")
             except Exception as e:
                 logging.error(f"Failed to refresh tokens: {e}")
                 return jsonify({"error": "Failed to refresh tokens. Please log in again."}), 401
 
-        # -- Finally, call your get_company_info with realm_id + access_token or user_id --
-        # e.g. if get_company_info can be realm-based:
+        # -- Call QuickBooks API to get company info --
         company_info = get_company_info(user_id)
 
-        # Return the relevant data
         return jsonify({
             "companyName": company_info.get("CompanyName"),
             "legalName": company_info.get("LegalName"),
@@ -2079,33 +2071,107 @@ def business_info():
 
 
 
-# ------------------------------------------
-# Analyze
-# ------------------------------------------
-@app.route('/analyze', methods=['GET'])
-def analyze():
+# ------------------------------------------#
+#             Company Audit
+# ------------------------------------------#
+@app.route('/audit', methods=['GET'])
+def audit():
     """
-    Example endpoint showing how you might call OpenAI with the company's data.
+    Fetches relevant financial reports and business info from QuickBooks,
+    then analyzes the company's financial health and suggests improvements.
     """
     try:
-        # For demonstration, let's just hardcode some data
-        company_info = {"CompanyName": "Demo Co", "LegalName": "Demo Co Inc."}
+        chat_session_id = request.args.get('chatSessionId')
+        session_token = request.cookies.get('session_token')
 
+        if not chat_session_id and not session_token:
+            logging.error("Missing chatSessionId and session token.")
+            return jsonify({"error": "chatSessionId or session token is required"}), 400
+
+        user_id = None
+        if session_token:
+            try:
+                decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+                user_id = decoded.get("user_id")
+            except jwt.ExpiredSignatureError:
+                logging.error("Session token expired.")
+                return jsonify({"error": "Session token expired. Please log in again."}), 401
+            except jwt.InvalidTokenError:
+                logging.error("Invalid session token.")
+                return jsonify({"error": "Invalid session token. Please log in again."}), 401
+
+        # -- If chatSessionId is provided, find the user_id first --
+        if chat_session_id and not user_id:
+            user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+            if user_lookup.data:
+                user_id = user_lookup.data[0]["id"]
+            else:
+                logging.error(f"No user found for chatSessionId: {chat_session_id}")
+                return jsonify({"error": "User not found for given chatSessionId"}), 404
+
+        if not user_id:
+            logging.error("No valid identifier for token retrieval.")
+            return jsonify({"error": "No valid identifier for token retrieval."}), 400
+
+        # -- Fetch company info from QuickBooks --
+        try:
+            company_info = get_company_info(user_id)
+        except Exception as e:
+            logging.error(f"Error fetching company info: {e}")
+            return jsonify({"error": "Failed to retrieve company info. Please check your QuickBooks connection."}), 500
+
+        if not company_info:
+            return jsonify({"error": "Company info is empty or unavailable."}), 404
+
+        # -- Fetch relevant financial reports --
+        reports_to_fetch = ["ProfitAndLoss", "BalanceSheet", "CashFlow"]
+        report_data = {}
+
+        for report in reports_to_fetch:
+            try:
+                report_data[report] = fetch_report(user_id, report)
+            except Exception as e:
+                logging.warning(f"Could not fetch {report}: {e}")
+
+        if not report_data:
+            logging.error("No financial reports retrieved.")
+            return jsonify({"error": "Could not retrieve financial reports. Ensure QuickBooks is connected."}), 500
+
+        # -- Construct AI Prompt for Financial Analysis --
         prompt = (
-            "Analyze the following business details...\n"
-            f"Company Info:\n{company_info}"
+            "Analyze the following company's financial data and business information. "
+            "Provide insights into financial health, risks, opportunities, and improvement strategies.\n\n"
+            f"**Company Details:**\n"
+            f"Company Name: {company_info.get('CompanyName')}\n"
+            f"Legal Name: {company_info.get('LegalName')}\n"
+            f"Address: {company_info.get('CompanyAddr', {}).get('Line1', 'N/A')}\n"
+            f"Phone: {company_info.get('PrimaryPhone', {}).get('FreeFormNumber', 'N/A')}\n"
+            f"Email: {company_info.get('Email', {}).get('Address', 'N/A')}\n\n"
+            "**Financial Reports:**\n"
         )
+
+        for report_name, data in report_data.items():
+            prompt += f"\n**{report_name} Report:**\n{data}\n"
+
+        prompt += "\nBased on the above data, provide an assessment of the company's financial standing, potential risks, and recommendations for improvement."
+
+        # -- Send prompt to OpenAI for analysis --
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,
+            max_tokens=500,
             temperature=0.7
         )
+
         analysis = response.choices[0].message.content
-        return render_template('analysis.html', analysis=analysis, data=company_info)
+
+        # -- Return results --
+        return render_template('audit.html', analysis=analysis, data={"company_info": company_info, "reports": report_data})
+
     except Exception as e:
-        logging.error(f"Error in /analyze: {e}")
-        return {"error": str(e)}, 500
+        logging.error(f"Error in /audit: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 # ------------------------------------------
 # get_reports: Returns a list of supported QuickBooks reports
