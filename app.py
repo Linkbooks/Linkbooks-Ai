@@ -1536,35 +1536,55 @@ def link_chat_session():
         is_authenticated = False
         expiry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
 
-        oauth_states_payload = {
-            "chat_session_id": chat_session_id,
-            "user_id": user_id,
-            "state": state,
-            "expiry": expiry,
-            "is_authenticated": is_authenticated,
-        }
-        logging.info(f"Payload for chatgpt_oauth_states upsert: {oauth_states_payload}")
+        # Check if an entry already exists
+        existing_entry = supabase.table("chatgpt_oauth_states") \
+            .select("chat_session_id") \
+            .eq("chat_session_id", chat_session_id) \
+            .eq("user_id", user_id) \
+            .execute()
 
-        oauth_states_response = supabase.table("chatgpt_oauth_states").upsert(oauth_states_payload).execute()
+        if existing_entry.data:
+            # Update the existing entry
+            logging.info(f"Updating existing chatgpt_oauth_states entry for chatSessionId {chat_session_id}")
+            oauth_states_response = supabase.table("chatgpt_oauth_states") \
+                .update({
+                    "state": state,
+                    "expiry": expiry,
+                    "is_authenticated": is_authenticated
+                }) \
+                .eq("chat_session_id", chat_session_id) \
+                .eq("user_id", user_id) \
+                .execute()
+        else:
+            # Insert new entry
+            logging.info(f"Inserting new chatgpt_oauth_states entry for chatSessionId {chat_session_id}")
+            oauth_states_response = supabase.table("chatgpt_oauth_states") \
+                .insert({
+                    "chat_session_id": chat_session_id,
+                    "user_id": user_id,
+                    "state": state,
+                    "expiry": expiry,
+                    "is_authenticated": is_authenticated,
+                }) \
+                .execute()
 
         if not oauth_states_response.data:
-            logging.error(f"Failed to upsert chatgpt_oauth_states for user {user_id}: {oauth_states_response}")
+            logging.error(f"Failed to update/insert chatgpt_oauth_states for user {user_id}: {oauth_states_response}")
             return jsonify({"error": "Failed to link chatSessionId to user"}), 500
 
-        logging.info(f"Successfully upserted chatgpt_oauth_states for user {user_id}.")
+        logging.info(f"Successfully linked chatSessionId {chat_session_id} for user {user_id}.")
 
+        # Update user profile with chatSessionId
         profile_update_payload = {
             "chat_session_id": chat_session_id,
             "updated_at": datetime.utcnow().isoformat(),
         }
-        logging.info(f"Payload for user_profiles update: {profile_update_payload}")
+        logging.info(f"Updating user_profiles: {profile_update_payload}")
 
-        profile_update_response = (
-            supabase.table("user_profiles")
-            .update(profile_update_payload)
-            .eq("id", user_id)
+        profile_update_response = supabase.table("user_profiles") \
+            .update(profile_update_payload) \
+            .eq("id", user_id) \
             .execute()
-        )
 
         if not profile_update_response.data:
             logging.error(f"Failed to update user_profiles for user {user_id}: {profile_update_response}")
@@ -1572,7 +1592,7 @@ def link_chat_session():
 
         logging.info(f"chatSessionId {chat_session_id} successfully linked for user {user_id}.")
 
-        # Redirect to the dashboard with the chatSessionId
+        # ✅ Keep the redirect to the dashboard with chatSessionId in the URL
         dashboard_url = url_for('dashboard', chatSessionId=chat_session_id)
         logging.info(f"Redirecting to dashboard: {dashboard_url}")
         return redirect(dashboard_url)
@@ -1580,6 +1600,7 @@ def link_chat_session():
     except Exception as e:
         logging.error(f"Error in /link-chat-session: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+
 
 
 
