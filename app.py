@@ -1318,7 +1318,7 @@ def fetch_user_data():
 def quickbooks_login():
     """
     Initiates QuickBooks OAuth, ensuring linkage between user and tokens.
-    No longer relies on chatSessionId.
+    No longer relies on chatSessionId unless provided.
     """
     try:
         # 1) Extract and decode session token for user-based logic
@@ -1341,19 +1341,26 @@ def quickbooks_login():
         state = generate_random_state()
         expiry = datetime.utcnow() + timedelta(minutes=30)
 
-        # ✅ STORE the state in chatgpt_oauth_states
-        response = supabase.table("chatgpt_oauth_states").upsert({
+        # ✅ Store OAuth state in chatgpt_oauth_states
+        # ✅ Ensure chat_session_id is only included if provided
+        chat_session_id = request.args.get('chatSessionId')
+
+        data = {
             "user_id": user_id,
             "state": state,
             "expiry": expiry.isoformat(),
             "is_authenticated": False
-        }).execute()
+        }
+        if chat_session_id:
+            data["chat_session_id"] = chat_session_id  # Only include if provided
+
+        response = supabase.table("chatgpt_oauth_states").upsert(data).execute()
 
         if not response.data:
             logging.error(f"Failed to store OAuth state for user {user_id}")
             return jsonify({"error": "Failed to store OAuth state."}), 500
 
-        logging.info(f"Stored OAuth state {state} for user {user_id}")
+        logging.info(f"Stored OAuth state {state} for user {user_id} with chatSessionId {chat_session_id}")
 
         # 3) Construct the QuickBooks OAuth URL with the stored 'state'
         auth_url = (
@@ -1372,6 +1379,7 @@ def quickbooks_login():
     except Exception as e:
         logging.error(f"Error in /quickbooks-login: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 
 
