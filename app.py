@@ -1607,30 +1607,43 @@ def link_chat_session():
 @app.route('/session/status', methods=['GET'])
 def get_session_status():
     """
-    Checks if a ChatGPT session is active by looking for tokens in chatgpt_tokens.
+    Fetches all active ChatGPT sessions, sorted by expiry (most recent first).
     """
     try:
-        chat_session_id = request.args.get('chatSessionId')
-        if not chat_session_id:
-            return jsonify({"authenticated": False, "message": "chatSessionId is required"}), 400
+        # Query all valid chat sessions from the database
+        response = (
+            supabase.table("chatgpt_tokens")
+            .select("chat_session_id, expiry")
+            .gt("expiry", datetime.utcnow().isoformat())  # Only get non-expired sessions
+            .order("expiry", desc=True)  # Sort by expiry (latest first)
+            .execute()
+        )
 
-        response = supabase.table("chatgpt_tokens").select("*").eq("chat_session_id", chat_session_id).execute()
         if not response.data:
-            logging.warning(f"No tokens found for chatSessionId {chat_session_id}.")
-            return jsonify({"authenticated": False, "message": "No tokens found. Please log in."}), 401
+            logging.warning("No active ChatGPT sessions found.")
+            return jsonify({"authenticated": False, "message": "No active ChatGPT sessions."}), 401
 
-        tokens = response.data[0]
-        expiry = datetime.fromisoformat(tokens['expiry'])
-        if datetime.utcnow() > expiry:
-            logging.info(f"Access token for chatSessionId {chat_session_id} expired.")
-            return jsonify({"authenticated": False, "message": "Session expired. Please reauthenticate."}), 401
+        # Format response: latest session first, list all active sessions
+        session_list = [
+            {
+                "chatSessionId": session["chat_session_id"],
+                "expiry": session["expiry"],
+                "isNewest": (index == 0),  # Mark the most recent session
+            }
+            for index, session in enumerate(response.data)
+        ]
 
-        logging.info(f"Session {chat_session_id} is active and authenticated.")
-        return jsonify({"authenticated": True, "message": "Session is active."}), 200
+        logging.info(f"Active ChatGPT sessions: {session_list}")
+
+        return jsonify({
+            "authenticated": True,
+            "message": "Active ChatGPT sessions found.",
+            "sessions": session_list
+        }), 200
 
     except Exception as e:
-        logging.error(f"Error in /session/status: {e}")
-        return jsonify({"authenticated": False, "message": "An unexpected error occurred. Try again later."}), 500
+        logging.error(f"Error in /session/status: {e}", exc_info=True)
+        return jsonify({"authenticated": False, "message": "An error occurred while retrieving session data."}), 500
 
 
 def refresh_access_token_for_chatgpt(chat_session_id, refresh_token):
