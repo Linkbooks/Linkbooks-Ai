@@ -41,13 +41,12 @@
         </div>
 
         <!-- ✅ NEW: ChatGPT Active Sessions Section -->
-        <!-- ✅ Updated: ChatGPT Active Sessions Section -->
         <div class="status-container">
             <h3>ChatGPT Sessions</h3>
             <p>Active Sessions: <span id="chatgpt-session-count">{{ chatgpt_sessions|length }}</span></p>
     
-            {% if chatgpt_sessions %}
-                <ul id="chatgpt-sessions-list">
+            <ul id="chatgpt-sessions-list">
+                {% if chatgpt_sessions %}
                     {% for session in chatgpt_sessions %}
                         <li>
                             <strong>Session {{ loop.index }}:</strong> 
@@ -55,10 +54,11 @@
                             (Created: {{ session.createdAt|datetimeformat }})
                         </li>
                     {% endfor %}
-                </ul>
-            {% else %}
-                <p>No active ChatGPT sessions.</p>
-            {% endif %}
+                {% else %}
+                    <li>No active ChatGPT sessions.</li>
+                {% endif %}
+            </ul>
+            
         </div>
 
 
@@ -113,7 +113,13 @@
         async function checkChatGPTSessions() {
             const sessionCount = document.getElementById('chatgpt-session-count');
             const sessionList = document.getElementById('chatgpt-sessions-list');
-        
+
+            // ✅ Add this check to prevent errors
+            if (!sessionList || !sessionCount) {
+                console.error("❌ chatgpt-session-count or chatgpt-sessions-list element is missing in the HTML!");
+                return;
+    }
+
             try {
                 const response = await fetch('/fetch-chatgpt-sessions'); // ✅ New route to return all sessions
                 const result = await response.json();
@@ -121,6 +127,7 @@
                 if (response.ok && result.sessions.length > 0) {
                     sessionCount.innerText = result.sessions.length;
                     sessionList.innerHTML = "";  // Clear previous entries
+
                     // Display each session with Created_At time
                     result.sessions.forEach((session, index) => {
                         const listItem = document.createElement("li");
