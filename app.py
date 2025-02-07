@@ -1317,8 +1317,8 @@ def fetch_user_data():
 @app.route('/quickbooks-login', methods=['GET'])
 def quickbooks_login():
     """
-    Initiates QuickBooks OAuth, ensuring linkage between user, chat_session_id, and tokens.
-    Updates the existing row in chatgpt_oauth_states (no new rows).
+    Initiates QuickBooks OAuth, ensuring linkage between user and tokens.
+    No longer relies on chatSessionId.
     """
     try:
         # 1) Extract and decode session token for user-based logic
@@ -1337,40 +1337,11 @@ def quickbooks_login():
         if not user_id:
             return jsonify({"error": "User ID missing from session token."}), 401
 
-        # 2) Read the chatSessionId from the query param
-        chat_session_id = request.args.get('chatSessionId')
-        if not chat_session_id:
-            return jsonify({"error": "Missing chatSessionId in query params."}), 400
-
-        # 3) Generate a fresh OAuth state & expiry
+        # 2) Generate a fresh OAuth state & expiry
         state = generate_random_state()
         expiry = datetime.utcnow() + timedelta(minutes=30)
 
-        # 4) Update the existing row in chatgpt_oauth_states.
-        #    If that row doesn't exist, you'll get an empty response.data.
-        response = (
-            supabase.table("chatgpt_oauth_states")
-            .update({
-                "state": state,
-                "expiry": expiry.isoformat(),
-                "is_authenticated": False
-            })
-            .eq("user_id", user_id)
-            .eq("chat_session_id", chat_session_id)
-            .execute()
-        )
-
-        # 5) Check if the update actually updated anything
-        if not response.data:
-            logging.error(
-                f"No existing row found for user_id={user_id}, chat_session_id={chat_session_id}. "
-                "Cannot proceed with QuickBooks login."
-            )
-            return jsonify({
-                "error": "No existing row found to update. The user+chatSession was never linked?"
-            }), 400
-
-        # 6) Construct the QuickBooks OAuth URL with the newly generated 'state'
+        # 3) Construct the QuickBooks OAuth URL with the newly generated 'state'
         auth_url = (
             f"{AUTHORIZATION_BASE_URL}?"
             f"client_id={CLIENT_ID}&"
@@ -1381,12 +1352,13 @@ def quickbooks_login():
         )
         logging.info(f"Redirecting to QuickBooks login: {auth_url}")
 
-        # 7) Redirect the user to the QuickBooks authorization page
+        # 4) Redirect the user to QuickBooks authorization page
         return redirect(auth_url)
 
     except Exception as e:
         logging.error(f"Error in /quickbooks-login: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 
 
