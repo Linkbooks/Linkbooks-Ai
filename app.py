@@ -1448,7 +1448,26 @@ def start_oauth_for_chatgpt():
 
         # Check if a user is linked to this session
         user_check = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+
         if not user_check.data:
+            ...
+        else:
+            user_id = user_check.data[0]["id"]
+
+            # ✅ Check if the user is already authenticated with QuickBooks
+            auth_check = supabase.table("chatgpt_oauth_states").select("is_authenticated").eq("user_id", user_id).eq("is_authenticated", True).execute()
+
+            is_already_authenticated = bool(auth_check.data)  # True if any previous session was authenticated
+
+            # ✅ Insert the new chat session, inheriting authentication status
+            supabase.table("chatgpt_oauth_states").upsert({
+                "chat_session_id": chat_session_id,
+                "user_id": user_id,
+                "state": state,
+                "expiry": expiry.isoformat(),
+                "is_authenticated": is_already_authenticated  # 👈 Inherit authentication status
+            }).execute()
+            
             # Redirect to login if no user is linked
             encoded_session_id = quote(chat_session_id, safe="")
             middleware_login_url = f"https://linkbooksai.com/login?chatSessionId={encoded_session_id}"
@@ -1792,10 +1811,12 @@ def callback():
             }).execute()
 
             # Mark authentication as completed
+            # ✅ Update ALL rows for this user in chatgpt_oauth_states
             supabase.table("chatgpt_oauth_states").update({
                 "state": "completed",
                 "is_authenticated": True
-            }).eq("state", state).execute()
+            }).eq("user_id", user_id).execute()
+
 
             logging.info(f"QuickBooks authorization successful for user {user_id}")
 
