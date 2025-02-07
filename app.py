@@ -1457,7 +1457,7 @@ def start_oauth_for_chatgpt():
                 "loginUrl": middleware_login_url,
                 "chatSessionId": chat_session_id
             }), 200
-
+        
         # ✅ A user exists, extract their user_id
         user_id = user_check.data[0]["id"]
 
@@ -1470,30 +1470,17 @@ def start_oauth_for_chatgpt():
 
         is_already_authenticated = bool(auth_check.data)  # True if any previous session was authenticated
 
-        # ✅ Check if this chat_session_id already exists
-        session_exists = supabase.table("chatgpt_oauth_states") \
-            .select("chat_session_id") \
-            .eq("chat_session_id", chat_session_id) \
-            .execute()
+        # ✅ Store new chat session, BUT DO NOT TOUCH is_authenticated
+        state = generate_random_state()
+        expiry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
+        supabase.table("chatgpt_oauth_states").upsert({
+            "chat_session_id": chat_session_id,
+            "user_id": user_id,
+            "state": state,
+            "expiry": expiry
+        }, on_conflict=["chat_session_id"]).execute()
 
-        if session_exists.data:
-            # ✅ If session already exists, just update the authentication status
-            supabase.table("chatgpt_oauth_states").update({
-                "is_authenticated": is_already_authenticated
-            }).eq("chat_session_id", chat_session_id).execute()
-        else:
-            # ✅ Otherwise, create a new session entry
-            state = generate_random_state()
-            expiry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
-            supabase.table("chatgpt_oauth_states").insert({
-                "chat_session_id": chat_session_id,
-                "user_id": user_id,
-                "state": state,
-                "expiry": expiry,
-                "is_authenticated": is_already_authenticated  # 👈 Inherit authentication status
-            }).execute()
-
-        # ✅ If already authenticated, return success immediately
+        # ✅ If already authenticated with QuickBooks, return success immediately
         if is_already_authenticated:
             return jsonify({
                 "authenticated": True,
@@ -1518,6 +1505,7 @@ def start_oauth_for_chatgpt():
     except Exception as e:
         logging.error(f"Error in start_oauth_for_chatgpt: {e}", exc_info=True)
         return jsonify({"error": "An error occurred. Please try again."}), 500
+
 
 
 
@@ -1813,9 +1801,9 @@ def callback():
                 "token_expiry": expiry_str
             }).execute()
 
-            # ✅ Update ALL rows for this user in chatgpt_oauth_states
+            # ✅ Mark ALL chat sessions for this user as authenticated
             supabase.table("chatgpt_oauth_states").update({
-                "is_authenticated": True  # ✅ Mark all sessions as authenticated
+                "is_authenticated": True
             }).eq("user_id", user_id).execute()
 
             logging.info(f"QuickBooks authorization successful for user {user_id}")
@@ -1833,6 +1821,7 @@ def callback():
     except Exception as e:
         logging.error(f"Error in /callback: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 
 # ------------------------------------------------------------------------------
