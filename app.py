@@ -1450,53 +1450,45 @@ def start_oauth_for_chatgpt():
         user_check = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
 
         if not user_check.data:
-            ...
-        else:
-            user_id = user_check.data[0]["id"]
-
-            # ✅ Check if the user is already authenticated with QuickBooks
-            auth_check = supabase.table("chatgpt_oauth_states").select("is_authenticated").eq("user_id", user_id).eq("is_authenticated", True).execute()
-
-            is_already_authenticated = bool(auth_check.data)  # True if any previous session was authenticated
-
-            # ✅ Insert the new chat session, inheriting authentication status
-            supabase.table("chatgpt_oauth_states").upsert({
-                "chat_session_id": chat_session_id,
-                "user_id": user_id,
-                "state": state,
-                "expiry": expiry.isoformat(),
-                "is_authenticated": is_already_authenticated  # 👈 Inherit authentication status
-            }).execute()
-            
-            # Redirect to login if no user is linked
+            # 🛑 No user linked to this chatSessionId → Prompt login first
             encoded_session_id = quote(chat_session_id, safe="")
             middleware_login_url = f"https://linkbooksai.com/login?chatSessionId={encoded_session_id}"
             return jsonify({
                 "loginUrl": middleware_login_url,
                 "chatSessionId": chat_session_id
             }), 200
-
+        
+        # ✅ A user exists, extract their user_id
         user_id = user_check.data[0]["id"]
 
-        # Check if QuickBooks tokens exist for this user
-        tokens_exist = get_quickbooks_tokens(user_id) is not None
-        if tokens_exist:
-            logging.info(f"User {user_id} already authenticated with QuickBooks.")
-            return jsonify({
-                "authenticated": True,
-                "chatSessionId": chat_session_id
-            }), 200
+        # ✅ Check if the user is already authenticated with QuickBooks
+        auth_check = supabase.table("chatgpt_oauth_states") \
+            .select("is_authenticated") \
+            .eq("user_id", user_id) \
+            .eq("is_authenticated", True) \
+            .execute()
 
-        # Otherwise, generate OAuth login link
+        is_already_authenticated = bool(auth_check.data)  # True if any previous session was authenticated
+
+        # ✅ Store new chat session, inheriting authentication status
         state = generate_random_state()
         expiry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
         supabase.table("chatgpt_oauth_states").upsert({
             "chat_session_id": chat_session_id,
             "user_id": user_id,
             "state": state,
-            "expiry": expiry
+            "expiry": expiry,
+            "is_authenticated": is_already_authenticated  # 👈 Inherit authentication status
         }).execute()
 
+        # ✅ If already authenticated, return success immediately
+        if is_already_authenticated:
+            return jsonify({
+                "authenticated": True,
+                "chatSessionId": chat_session_id
+            }), 200
+
+        # ✅ Otherwise, generate OAuth login link
         quickbooks_oauth_url = (
             f"{AUTHORIZATION_BASE_URL}?"
             f"client_id={CLIENT_ID}&"
