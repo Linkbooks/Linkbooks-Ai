@@ -1341,7 +1341,21 @@ def quickbooks_login():
         state = generate_random_state()
         expiry = datetime.utcnow() + timedelta(minutes=30)
 
-        # 3) Construct the QuickBooks OAuth URL with the newly generated 'state'
+        # ✅ STORE the state in chatgpt_oauth_states
+        response = supabase.table("chatgpt_oauth_states").upsert({
+            "user_id": user_id,
+            "state": state,
+            "expiry": expiry.isoformat(),
+            "is_authenticated": False
+        }).execute()
+
+        if not response.data:
+            logging.error(f"Failed to store OAuth state for user {user_id}")
+            return jsonify({"error": "Failed to store OAuth state."}), 500
+
+        logging.info(f"Stored OAuth state {state} for user {user_id}")
+
+        # 3) Construct the QuickBooks OAuth URL with the stored 'state'
         auth_url = (
             f"{AUTHORIZATION_BASE_URL}?"
             f"client_id={CLIENT_ID}&"
