@@ -1350,8 +1350,8 @@ def quickbooks_login():
         }).eq("user_id", user_id).execute()
 
         # ✅ FIX: Handle response correctly
-        if response.status_code != 200:
-            logging.error(f"Failed to update OAuth state for user {user_id}, Response: {response}")
+        if not response.data:  # ✅ Check if data exists instead
+            logging.error(f"Failed to update OAuth state for user {user_id}")
             return jsonify({"error": "Failed to update OAuth state."}), 500
 
         logging.info(f"Updated OAuth state {state} for user {user_id}")
