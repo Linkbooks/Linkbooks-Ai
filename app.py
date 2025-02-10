@@ -2282,6 +2282,68 @@ def fetch_transactions_route():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/test-transactions', methods=['GET'])
+def test_transactions():
+    """
+    A simple test endpoint to fetch the TransactionList report from QuickBooks.
+    It uses the stored QuickBooks tokens for a given user (identified by a session token or chatSessionId)
+    and returns the JSON result of the processed transactions.
+    
+    You can supply query parameters (e.g., start_date, end_date) to test filtering.
+    Example:
+      /test-transactions?chatSessionId=YOUR_CHAT_SESSION_ID&start_date=2024-01-01&end_date=2024-12-31
+    """
+    try:
+        chat_session_id = request.args.get('chatSessionId')
+        session_token = request.cookies.get('session_token')
+        user_id = None
+
+        # Try to get the user_id from the session token
+        if session_token:
+            try:
+                decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+                user_id = decoded.get("user_id")
+            except jwt.ExpiredSignatureError:
+                logging.error("Session token expired.")
+                return jsonify({"error": "Session token expired. Please log in again."}), 401
+            except jwt.InvalidTokenError:
+                logging.error("Invalid session token.")
+                return jsonify({"error": "Invalid session token. Please log in again."}), 401
+
+        # If not available, try to get user_id via chatSessionId
+        if not user_id and chat_session_id:
+            user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+            if user_lookup.data:
+                user_id = user_lookup.data[0]["id"]
+            else:
+                logging.error(f"No user found for chatSessionId: {chat_session_id}")
+                return jsonify({"error": "User not found for given chatSessionId"}), 404
+
+        if not user_id:
+            logging.error("No user_id found via session token or chatSessionId.")
+            return jsonify({"error": "No user_id found. Please log in or provide a valid chatSessionId."}), 401
+
+        # Set up some test query parameters. Adjust these as needed.
+        qb_params = {
+            "start_date": request.args.get("start_date", "2024-01-01"),
+            "end_date": request.args.get("end_date", "2024-12-31")
+            # You can also test additional parameters if desired.
+        }
+
+        # Optionally, you can include a vendor filter for local filtering:
+        vendor_value = request.args.get("vendor")
+        if vendor_value:
+            qb_params["vendor"] = vendor_value
+
+        # Use the fetch_transactions helper to retrieve and process the report.
+        result = fetch_transactions(user_id, qb_params)
+
+        # Return the full JSON for testing purposes.
+        return jsonify(result), 200
+
+    except Exception as e:
+        logging.error("Error in test-transactions route: " + str(e))
+        return jsonify({"error": str(e)}), 500
 
 
 # ------------------------------------------
