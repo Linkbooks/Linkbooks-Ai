@@ -2430,57 +2430,93 @@ def get_qb_transactions_raw(user_id: str, start_date: str, end_date: str) -> lis
 @app.route('/test-transactions', methods=['GET'])
 def test_transactions():
     """
-    A test endpoint for pulling QuickBooks transactions within a specified date range,
-    and optionally filtering by transaction type and name.
-    
+    A simple test endpoint to fetch the TransactionList report from QuickBooks
+    using the session user_id (from the session token). The caller must supply
+    'start_date' and 'end_date' query parameters (in YYYY-MM-DD format).
+
     Example usage:
-      GET /test-transactions?start_date=2024-08-01&end_date=2024-08-31
-      Optional filters:
-        &transaction_type=Expense
-        &name=Amazon
+      https://linkbooksai.com/test-transactions?start_date=2024-08-01&end_date=2024-08-31
     """
     try:
-        # 1) Identify the user from session token
-        session_token = request.cookies.get("session_token")
+        # 1️⃣ Get session token from cookies
+        session_token = request.cookies.get('session_token')
         if not session_token:
             return jsonify({"error": "No session token provided."}), 401
 
+        # 2️⃣ Decode session token to get user_id
         try:
             decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
             user_id = decoded.get("user_id")
         except Exception as e:
-            logging.error(f"Error decoding token: {e}")
+            logging.error("Error decoding session token: " + str(e))
             return jsonify({"error": "Invalid or expired session token."}), 401
 
         if not user_id:
             return jsonify({"error": "No user_id found in session token."}), 401
 
-        # 2) Grab required date range
+        # 3️⃣ Get date range from query params
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
         if not start_date or not end_date:
-            return jsonify({"error": "start_date and end_date are required."}), 400
+            return jsonify({"error": "Both start_date and end_date query parameters are required."}), 400
 
-        # 3) Optional local filters
-        tx_type_filter = request.args.get("transaction_type")  # e.g. "Expense"
-        name_filter = request.args.get("name")                 # e.g. "Amazon"
+        # 4️⃣ Fetch QuickBooks tokens from Supabase
+        tokens = get_quickbooks_tokens(user_id)
+        access_token = tokens.get("access_token")
+        realm_id = tokens.get("realm_id")
 
-        # 4) Fetch raw transactions from QuickBooks
-        raw_transactions = get_qb_transactions_raw(user_id, start_date, end_date)
+        if not access_token or not realm_id:
+            logging.error("Missing QuickBooks tokens for user_id: " + user_id)
+            return jsonify({"error": "Missing QuickBooks tokens for this user."}), 400
 
-        # 5) Apply local filters if provided
-        filtered = filter_transactions_local(
-            raw_transactions,
-            tx_type_filter=tx_type_filter,
-            name_filter=name_filter
-        )
+        # 5️⃣ Refresh token if expired
+        expiry_str = tokens.get("token_expiry")
+        if expiry_str:
+            expiry_dt = datetime.fromisoformat(expiry_str)
+            if datetime.utcnow() > expiry_dt:
+                logging.info(f"Token expired for user {user_id}; refreshing tokens...")
+                refresh_access_token(user_id)
+                tokens = get_quickbooks_tokens(user_id)  # Re-fetch new tokens
+                access_token = tokens.get("access_token")
+                realm_id = tokens.get("realm_id")
 
-        # 6) Return the final data
-        return jsonify({"transactions": filtered}), 200
+        # 6️⃣ Log important values
+        logging.info(f"Fetching transactions for user_id: {user_id}, realm_id: {realm_id}")
+        logging.info(f"Date Range: {start_date} to {end_date}")
+
+        # 7️⃣ Build QuickBooks API request
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json"
+        }
+        base_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/TransactionList"
+        params = {
+            "start_date": start_date,
+            "end_date": end_date
+        }
+
+        # 8️⃣ Make the request
+        response = requests.get(base_url, headers=headers, params=params)
+
+        # 9️⃣ Handle errors
+        if response.status_code == 403:
+            logging.error("QuickBooks API Authorization Error: " + response.text)
+            return jsonify({"error": "QuickBooks API error: Unauthorized. Try re-linking your QuickBooks account."}), 403
+
+        if response.status_code != 200:
+            logging.error("Error fetching TransactionList report: " + response.text)
+            return jsonify({
+                "error": "Failed to fetch TransactionList report",
+                "details": response.text
+            }), response.status_code
+
+        # 🔟 Return raw QuickBooks response
+        return jsonify(response.json()), 200
 
     except Exception as e:
-        logging.error(f"Error in /test-transactions: {e}")
+        logging.error("Error in /test-transactions: " + str(e))
         return jsonify({"error": str(e)}), 500
+
 
 
 
