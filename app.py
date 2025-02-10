@@ -742,25 +742,57 @@ def fetch_report(
 
 #--------------- Fetch Transactions Def -------------------#
 
+def filter_transactions_locally(transactions: list, local_filters: dict) -> list:
+    """
+    Filters a list of transaction dictionaries based on provided filter criteria.
+    Performs a case-insensitive substring search on the relevant fields.
+    
+    :param transactions: List of transaction dicts.
+    :param local_filters: Dictionary of filter keys and values (e.g., {"vendor": "McDonald's"}).
+                          Note: For filtering by vendor, we assume the vendor name is stored in the "name" field.
+    :return: Filtered list of transactions.
+    """
+    filtered = []
+    for txn in transactions:
+        include = True
+        for key, filter_value in local_filters.items():
+            # Map "vendor" to "name" since that's where the vendor name appears in the report.
+            field = "name" if key == "vendor" else key
+            txn_value = txn.get(field, "")
+            if filter_value.lower() not in txn_value.lower():
+                include = False
+                break
+        if include:
+            filtered.append(txn)
+    return filtered
+
+
 def fetch_transactions(user_id: str, qb_params: dict) -> dict:
     """
     Fetches the TransactionList report from QuickBooks using a dynamic set of query parameters,
-    then applies local filtering for parameters that require reference IDs.
+    then applies local filtering for parameters that require reference IDs (e.g. vendor, customer).
+    
+    The function:
+      1. Retrieves QuickBooks tokens (and refreshes them if expired).
+      2. Separates out parameters that QuickBooks expects as IDs (e.g. vendor) so that free‑form text isn’t sent.
+      3. Calls the TransactionList endpoint.
+      4. Processes the returned JSON—handling grouped rows and ignoring summary rows.
+      5. Applies local filtering based on the removed parameters.
     
     :param user_id: The QuickBooks-connected user ID.
     :param qb_params: Dictionary of query parameters from the request.
-    :return: A dict containing a list of processed transaction rows.
+    :return: A dictionary with a "transactions" key containing the filtered list.
     """
-    # 1) Retrieve tokens from Supabase
+    # 1) Retrieve tokens from Supabase.
     tokens = get_quickbooks_tokens(user_id)
     access_token = tokens.get("access_token")
     realm_id = tokens.get("realm_id")
     expiry_str = tokens.get("token_expiry")
-
+    
     if not access_token or not realm_id:
         raise Exception("Missing QuickBooks tokens or realm_id for this user.")
-
-    # 2) Check token expiry and refresh if needed
+    
+    # 2) Refresh token if expired.
     if expiry_str:
         expiry_dt = datetime.fromisoformat(expiry_str)
         if datetime.utcnow() > expiry_dt:
@@ -769,24 +801,25 @@ def fetch_transactions(user_id: str, qb_params: dict) -> dict:
             tokens = get_quickbooks_tokens(user_id)
             access_token = tokens.get("access_token")
             realm_id = tokens.get("realm_id")
-
+    
     # 3) Separate out filters that require local handling.
-    # For these keys, QuickBooks expects IDs and not free-text, so we remove them from qb_params.
+    # These keys (like vendor, customer, name, department, memo) expect reference IDs in QB,
+    # so remove them from qb_params and store them for local filtering.
     local_filter_keys = ["vendor", "customer", "name", "department", "memo"]
     local_filters = {}
     for key in local_filter_keys:
         if key in qb_params:
             local_filters[key] = qb_params.pop(key)
-
-    # 4) Build the API request (passing the remaining qb_params to QuickBooks)
+    
+    # 4) Build the API request to QuickBooks.
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json"
     }
     base_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/TransactionList"
     response = requests.get(base_url, headers=headers, params=qb_params)
-
-    # 5) If token expired mid-request, refresh and retry
+    
+    # 5) Handle potential token expiry mid-request.
     if response.status_code == 401:
         logging.info("Token might have expired mid-request. Attempting second refresh...")
         refresh_access_token(user_id)
@@ -794,97 +827,68 @@ def fetch_transactions(user_id: str, qb_params: dict) -> dict:
         access_token = tokens.get("access_token")
         headers["Authorization"] = f"Bearer {access_token}"
         response = requests.get(base_url, headers=headers, params=qb_params)
-
+    
     if response.status_code != 200:
         logging.error(f"Error fetching TransactionList report: {response.text}")
         raise Exception(f"Failed to fetch TransactionList report: {response.status_code} {response.text}")
-
+    
     report_data = response.json()
-
+    
     # 6) Process the JSON response to extract transaction rows.
     transactions = []
     rows = report_data.get("Rows", {}).get("Row", [])
     
     for row in rows:
+        # If the row is a grouping (contains nested Rows), process each nested row.
         if "Rows" in row and "Row" in row["Rows"]:
             for data_row in row["Rows"]["Row"]:
+                # Only process rows with type "Data" (ignore any other types).
+                if data_row.get("type") != "Data":
+                    continue
                 col_data = data_row.get("ColData", [])
+                # Ensure there are at least 10 columns as expected.
                 if len(col_data) < 10:
                     continue
-                transactions.append({
-                    "date": col_data[0].get("value"),
-                    "transaction_type": col_data[1].get("value"),
-                    "doc_num": col_data[2].get("value"),
-                    "posting": col_data[3].get("value"),
-                    # Here, we assume the vendor name is stored under "name".
-                    "name": col_data[4].get("value"),
-                    "department": col_data[5].get("value"),
-                    "memo": col_data[6].get("value"),
-                    "account": col_data[7].get("value"),
-                    "split": col_data[8].get("value"),
-                    "amount": col_data[9].get("value")
-                })
+                txn = {
+                    "date": col_data[0].get("value", ""),
+                    "transaction_type": col_data[1].get("value", ""),
+                    "doc_num": col_data[2].get("value", ""),
+                    "posting": col_data[3].get("value", ""),
+                    "name": col_data[4].get("value", ""),
+                    "department": col_data[5].get("value", ""),
+                    "memo": col_data[6].get("value", ""),
+                    "account": col_data[7].get("value", ""),
+                    "split": col_data[8].get("value", ""),
+                    "amount": col_data[9].get("value", "")
+                }
+                transactions.append(txn)
+        # If the row is standalone, process it directly.
         else:
+            # Optionally, check if row type is "Data".
+            if row.get("type") != "Data":
+                continue
             col_data = row.get("ColData", [])
             if len(col_data) < 10:
                 continue
-            transactions.append({
-                "date": col_data[0].get("value"),
-                "transaction_type": col_data[1].get("value"),
-                "doc_num": col_data[2].get("value"),
-                "posting": col_data[3].get("value"),
-                "name": col_data[4].get("value"),
-                "department": col_data[5].get("value"),
-                "memo": col_data[6].get("value"),
-                "account": col_data[7].get("value"),
-                "split": col_data[8].get("value"),
-                "amount": col_data[9].get("value")
-            })
-
-    # 7) Apply local filters if provided.
-    if local_filters:
-        # Map local filter keys to the actual keys in your transaction records.
-        # For example, if "vendor" is provided by the user, and the vendor name is stored under "name", 
-        # then convert the key.
-        mapped_filters = {}
-        if "vendor" in local_filters:
-            mapped_filters["name"] = local_filters["vendor"]
-        # You can add additional mappings here if needed.
-        for key in ["customer", "name", "department", "memo"]:
-            if key in local_filters:
-                mapped_filters[key] = local_filters[key]
-        transactions = filter_transactions_locally(transactions, mapped_filters)
-
-    return {"transactions": transactions}
-
-
-#----------------- Filter Transactions Def -------------------#
-
-def filter_transactions_locally(transactions: list, local_filters: dict) -> list:
-    """
-    Filters a list of transaction dicts based on provided local filter criteria.
-    Performs case-insensitive substring matching.
+            txn = {
+                "date": col_data[0].get("value", ""),
+                "transaction_type": col_data[1].get("value", ""),
+                "doc_num": col_data[2].get("value", ""),
+                "posting": col_data[3].get("value", ""),
+                "name": col_data[4].get("value", ""),
+                "department": col_data[5].get("value", ""),
+                "memo": col_data[6].get("value", ""),
+                "account": col_data[7].get("value", ""),
+                "split": col_data[8].get("value", ""),
+                "amount": col_data[9].get("value", "")
+            }
+            transactions.append(txn)
     
-    :param transactions: List of transaction dicts.
-    :param local_filters: Dictionary of filter keys and values (e.g., {"vendor": "McDonald's"}).
-    :return: Filtered list of transactions.
-    """
-    filtered = []
-    for txn in transactions:
-        include = True
-        for key, value in local_filters.items():
-            # Use the same key that your transaction dict uses.
-            # For example, if vendor names are stored under "name", then the filter key should be "vendor" 
-            # and you can map it to the "name" field (or you might use the same key).
-            field_value = txn.get(key, "")
-            if value.lower() not in field_value.lower():
-                include = False
-                break
-        if include:
-            filtered.append(txn)
-    return filtered
-
-
+    # 7) Apply local filtering if any filters were provided.
+    if local_filters:
+        transactions = filter_transactions_locally(transactions, local_filters)
+    
+    return {"transactions": transactions}
 
 
 # ------------------------------------------------------------------------------
@@ -2207,16 +2211,21 @@ def fetch_reports_route():
 @app.route('/fetch-transactions', methods=['GET'])
 def fetch_transactions_route():
     """
-    Fetches the TransactionList report from QuickBooks with dynamic query parameters.
-    Query parameters that require reference IDs (like vendor, customer, name, department, memo)
-    are removed from the API call and applied locally instead.
+    Fetches the TransactionList report from QuickBooks using dynamic query parameters.
+    
+    Query parameters such as startDate, endDate, date_macro, payment_method, etc. are sent directly.
+    Parameters like vendor, customer, name, department, and memo are removed from the QB request
+    and applied locally after the full report is returned.
+    
+    Example usage:
+      /fetch-transactions?chatSessionId=...&startDate=2024-08-01&endDate=2024-08-31&vendor=McDonald's
     """
     try:
         chat_session_id = request.args.get('chatSessionId')
         session_token = request.cookies.get('session_token')
         user_id = None
 
-        # 1) Attempt to decode user_id from session token.
+        # 1) Extract user_id from the session token if available.
         if session_token:
             try:
                 decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
@@ -2228,7 +2237,7 @@ def fetch_transactions_route():
                 logging.error("Invalid session token.")
                 return jsonify({"error": "Invalid session token. Please log in again."}), 401
 
-        # 2) If user_id not found, look up using chatSessionId.
+        # 2) If not available, look up user_id via chatSessionId.
         if not user_id and chat_session_id:
             user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
             if user_lookup.data:
@@ -2241,12 +2250,14 @@ def fetch_transactions_route():
             logging.error("No user_id found via session token or chatSessionId.")
             return jsonify({"error": "No user_id found. Please log in or link session."}), 401
 
-        # 3) Build a dictionary of allowed QB query parameters from the request.
+        # 3) Build a dictionary of allowed QuickBooks query parameters from the request.
         allowed_params = [
-            "date_macro", "payment_method", "duedate_macro", "arpaid", "bothamount", "transaction_type", "docnum",
-            "start_moddate", "source_account_type", "group_by", "start_date", "department", "start_duedate", "columns",
-            "end_duedate", "end_date", "memo", "appaid", "moddate_macro", "printed", "createdate_macro", "cleared",
-            "customer", "qzurl", "term", "end_createdate", "name", "sort_by", "sort_order", "start_createdate", "end_moddate"
+            "date_macro", "payment_method", "duedate_macro", "arpaid", "bothamount",
+            "transaction_type", "docnum", "start_moddate", "source_account_type",
+            "group_by", "start_date", "department", "start_duedate", "columns",
+            "end_duedate", "end_date", "memo", "appaid", "moddate_macro", "printed",
+            "createdate_macro", "cleared", "customer", "qzurl", "term", "end_createdate",
+            "name", "sort_by", "sort_order", "start_createdate", "end_moddate"
         ]
         qb_params = {}
         for param in allowed_params:
@@ -2254,24 +2265,21 @@ def fetch_transactions_route():
             if value is not None:
                 qb_params[param] = value
 
-        # Also, add keys that require local filtering (vendor, customer, etc.)
+        # 4) Also capture parameters that require local filtering (e.g., vendor).
         for key in ["vendor"]:
             value = request.args.get(key)
             if value is not None:
                 qb_params[key] = value
 
-        # 4) Fetch transactions using our helper
+        # 5) Call the helper to fetch and filter transactions.
         transactions_data = fetch_transactions(user_id=user_id, qb_params=qb_params)
 
-        # 5) Return the resulting JSON
-        return jsonify({
-            "data": transactions_data
-        }), 200
+        # 6) Return the sanitized transactions.
+        return jsonify({"data": transactions_data}), 200
 
     except Exception as e:
         logging.error(f"Error in /fetch-transactions: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 
 
