@@ -2430,12 +2430,11 @@ def get_qb_transactions_raw(user_id: str, start_date: str, end_date: str) -> lis
 @app.route('/test-transactions', methods=['GET'])
 def test_transactions():
     """
-    A simple test endpoint to fetch the TransactionList report from QuickBooks
-    using the session user_id (from the session token). The caller must supply
-    'start_date' and 'end_date' query parameters (in YYYY-MM-DD format).
-
-    Example usage:
-      https://linkbooksai.com/test-transactions?start_date=2024-08-01&end_date=2024-08-31
+    Fetches the TransactionList report from QuickBooks for the session user_id.
+    Allows optional filtering by transaction type and name.
+    
+    Example:
+    https://linkbooksai.com/test-transactions?start_date=2024-08-01&end_date=2024-08-31&type=Expense&name=Amazon
     """
     try:
         # 1️⃣ Get session token from cookies
@@ -2460,63 +2459,23 @@ def test_transactions():
         if not start_date or not end_date:
             return jsonify({"error": "Both start_date and end_date query parameters are required."}), 400
 
-        # 4️⃣ Fetch QuickBooks tokens from Supabase
-        tokens = get_quickbooks_tokens(user_id)
-        access_token = tokens.get("access_token")
-        realm_id = tokens.get("realm_id")
+        # 4️⃣ Get optional filters from query parameters
+        tx_type_filter = request.args.get("type")  # e.g., "Expense", "Invoice"
+        name_filter = request.args.get("name")  # e.g., "Amazon", "Warner Bros"
 
-        if not access_token or not realm_id:
-            logging.error("Missing QuickBooks tokens for user_id: " + user_id)
-            return jsonify({"error": "Missing QuickBooks tokens for this user."}), 400
+        # 5️⃣ Fetch all transactions from QuickBooks
+        transactions = get_qb_transactions_raw(user_id, start_date, end_date)
 
-        # 5️⃣ Refresh token if expired
-        expiry_str = tokens.get("token_expiry")
-        if expiry_str:
-            expiry_dt = datetime.fromisoformat(expiry_str)
-            if datetime.utcnow() > expiry_dt:
-                logging.info(f"Token expired for user {user_id}; refreshing tokens...")
-                refresh_access_token(user_id)
-                tokens = get_quickbooks_tokens(user_id)  # Re-fetch new tokens
-                access_token = tokens.get("access_token")
-                realm_id = tokens.get("realm_id")
+        # 6️⃣ Apply local filtering
+        if tx_type_filter or name_filter:
+            transactions = filter_transactions_local(transactions, tx_type_filter, name_filter)
 
-        # 6️⃣ Log important values
-        logging.info(f"Fetching transactions for user_id: {user_id}, realm_id: {realm_id}")
-        logging.info(f"Date Range: {start_date} to {end_date}")
-
-        # 7️⃣ Build QuickBooks API request
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json"
-        }
-        base_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/TransactionList"
-        params = {
-            "start_date": start_date,
-            "end_date": end_date
-        }
-
-        # 8️⃣ Make the request
-        response = requests.get(base_url, headers=headers, params=params)
-
-        # 9️⃣ Handle errors
-        if response.status_code == 403:
-            logging.error("QuickBooks API Authorization Error: " + response.text)
-            return jsonify({"error": "QuickBooks API error: Unauthorized. Try re-linking your QuickBooks account."}), 403
-
-        if response.status_code != 200:
-            logging.error("Error fetching TransactionList report: " + response.text)
-            return jsonify({
-                "error": "Failed to fetch TransactionList report",
-                "details": response.text
-            }), response.status_code
-
-        # 🔟 Return raw QuickBooks response
-        return jsonify(response.json()), 200
+        # 7️⃣ Return filtered transactions
+        return jsonify({"transactions": transactions}), 200
 
     except Exception as e:
         logging.error("Error in /test-transactions: " + str(e))
         return jsonify({"error": str(e)}), 500
-
 
 
 
