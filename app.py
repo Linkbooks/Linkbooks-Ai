@@ -2285,64 +2285,79 @@ def fetch_transactions_route():
 @app.route('/test-transactions', methods=['GET'])
 def test_transactions():
     """
-    A simple test endpoint to fetch the TransactionList report from QuickBooks.
-    It uses the stored QuickBooks tokens for a given user (identified by a session token or chatSessionId)
-    and returns the JSON result of the processed transactions.
-    
-    You can supply query parameters (e.g., start_date, end_date) to test filtering.
-    Example:
-      /test-transactions?chatSessionId=YOUR_CHAT_SESSION_ID&start_date=2024-01-01&end_date=2024-12-31
+    A simple test endpoint to fetch the TransactionList report from QuickBooks
+    using the session user_id (from the session token). The caller must supply
+    'start_date' and 'end_date' query parameters (in YYYY-MM-DD format).
+
+    Example usage:
+      https://linkbooksai.com/test-transactions?start_date=2024-08-01&end_date=2024-08-31
     """
     try:
-        chat_session_id = request.args.get('chatSessionId')
+        # Retrieve the session token from cookies.
         session_token = request.cookies.get('session_token')
-        user_id = None
+        if not session_token:
+            return jsonify({"error": "No session token provided."}), 401
 
-        # Try to get the user_id from the session token
-        if session_token:
-            try:
-                decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
-                user_id = decoded.get("user_id")
-            except jwt.ExpiredSignatureError:
-                logging.error("Session token expired.")
-                return jsonify({"error": "Session token expired. Please log in again."}), 401
-            except jwt.InvalidTokenError:
-                logging.error("Invalid session token.")
-                return jsonify({"error": "Invalid session token. Please log in again."}), 401
-
-        # If not available, try to get user_id via chatSessionId
-        if not user_id and chat_session_id:
-            user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
-            if user_lookup.data:
-                user_id = user_lookup.data[0]["id"]
-            else:
-                logging.error(f"No user found for chatSessionId: {chat_session_id}")
-                return jsonify({"error": "User not found for given chatSessionId"}), 404
+        # Decode the session token to get the user_id.
+        try:
+            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+            user_id = decoded.get("user_id")
+        except Exception as e:
+            logging.error("Error decoding session token: " + str(e))
+            return jsonify({"error": "Invalid or expired session token."}), 401
 
         if not user_id:
-            logging.error("No user_id found via session token or chatSessionId.")
-            return jsonify({"error": "No user_id found. Please log in or provide a valid chatSessionId."}), 401
+            return jsonify({"error": "No user_id found in session token."}), 401
 
-        # Set up some test query parameters. Adjust these as needed.
-        qb_params = {
-            "start_date": request.args.get("start_date", "2024-01-01"),
-            "end_date": request.args.get("end_date", "2024-12-31")
-            # You can also test additional parameters if desired.
+        # Get the date range from the query parameters.
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        if not start_date or not end_date:
+            return jsonify({"error": "Both start_date and end_date query parameters are required."}), 400
+
+        # Retrieve QuickBooks tokens from Supabase.
+        tokens = get_quickbooks_tokens(user_id)
+        access_token = tokens.get("access_token")
+        realm_id = tokens.get("realm_id")
+        if not access_token or not realm_id:
+            return jsonify({"error": "Missing QuickBooks tokens for this user."}), 400
+
+        # Check token expiry and refresh if necessary.
+        expiry_str = tokens.get("token_expiry")
+        if expiry_str:
+            expiry_dt = datetime.fromisoformat(expiry_str)
+            if datetime.utcnow() > expiry_dt:
+                logging.info("Token expired; refreshing tokens...")
+                refresh_access_token(user_id)
+                tokens = get_quickbooks_tokens(user_id)
+                access_token = tokens.get("access_token")
+                realm_id = tokens.get("realm_id")
+
+        # Build the QuickBooks API request.
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json"
         }
+        base_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/TransactionList"
+        params = {
+            "start_date": start_date,
+            "end_date": end_date
+        }
+        response = requests.get(base_url, headers=headers, params=params)
 
-        # Optionally, you can include a vendor filter for local filtering:
-        vendor_value = request.args.get("vendor")
-        if vendor_value:
-            qb_params["vendor"] = vendor_value
+        # If there's an error, log and return the error details.
+        if response.status_code != 200:
+            logging.error("Error fetching TransactionList report: " + response.text)
+            return jsonify({
+                "error": "Failed to fetch TransactionList report",
+                "details": response.text
+            }), response.status_code
 
-        # Use the fetch_transactions helper to retrieve and process the report.
-        result = fetch_transactions(user_id, qb_params)
-
-        # Return the full JSON for testing purposes.
-        return jsonify(result), 200
+        # Return the raw JSON response from QuickBooks.
+        return jsonify(response.json()), 200
 
     except Exception as e:
-        logging.error("Error in test-transactions route: " + str(e))
+        logging.error("Error in /test-transactions: " + str(e))
         return jsonify({"error": str(e)}), 500
 
 
