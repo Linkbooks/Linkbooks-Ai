@@ -2206,6 +2206,40 @@ def fetch_reports_route():
     except Exception as e:
         logging.error(f"Error in /fetch-reports: {e}")
         return jsonify({"error": str(e)}), 500
+    
+    
+#-------------Fetch Transactions Helpers-------------#
+
+def should_use_gpt4(query):
+    """
+    Determines if GPT-4 Turbo should be used based on complexity.
+    """
+    if len(query) > 100:  # Example: Longer queries are likely more complex
+        return True
+    keywords = ["approximate", "similar to", "fuzzy match", "group by", "trend"]
+    if any(kw in query.lower() for kw in keywords):  # Keywords suggest deeper reasoning
+        return True
+    return False
+
+import openai
+
+def ask_gpt_to_filter(transactions, query, model):
+    """
+    Sends transactions and a query to OpenAI for intelligent filtering.
+    """
+    openai_client = openai.OpenAI()  # Ensure OpenAI client is initialized properly
+
+    response = openai_client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "You are an AI that analyzes financial transactions and filters them based on user requests."},
+            {"role": "user", "content": f"Here are my transactions:\n{transactions}\n\nFilter them based on this request: {query}"}
+        ]
+    )
+    return response.choices[0].message.content  # Corrected path to response content
+
+
+
 
 #-------------- Fetch Transactions Route --------------#
 @app.route('/fetch-transactions', methods=['GET'])
@@ -2280,6 +2314,32 @@ def fetch_transactions_route():
     except Exception as e:
         logging.error(f"Error in /fetch-transactions: {e}")
         return jsonify({"error": str(e)}), 500
+    
+    
+
+
+@app.route('/filter-transactions', methods=['POST'])
+def filter_transactions():
+    try:
+        data = request.json
+        query = data.get("query")
+        transactions = get_qb_transactions_raw(user_id, start_date, end_date)
+
+        # Determine complexity
+        use_gpt4 = should_use_gpt4(query)
+
+        # Select model
+        model = "gpt-4-turbo" if use_gpt4 else "gpt-3.5-turbo"
+
+        logging.info(f"Using {model} for filtering")
+
+        gpt_response = ask_gpt_to_filter(transactions, query, model)
+        return jsonify(gpt_response)
+
+    except Exception as e:
+        logging.error(f"Error in /filter-transactions: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 
 
 #-----------Test Transactions Route-----------#
@@ -2477,6 +2537,61 @@ def test_transactions():
         logging.error("Error in /test-transactions: " + str(e))
         return jsonify({"error": str(e)}), 500
 
+#-----------Fetch Transactions AI Route-----------#
+
+@app.route('/fetch-transactions-ai', methods=['GET'])
+def fetch_transactions_ai():
+    """
+    Fetches transactions from QuickBooks, then processes them using OpenAI for intelligent filtering.
+    
+    Example:
+    https://linkbooksai.com/fetch-transactions-ai?start_date=2024-08-01&end_date=2024-08-31&query=Find all food places over £20
+    
+    The 'query' parameter is used to instruct OpenAI on filtering.
+    """
+    try:
+        # 1️⃣ Get session token from cookies
+        session_token = request.cookies.get('session_token')
+        if not session_token:
+            return jsonify({"error": "No session token provided."}), 401
+
+        # 2️⃣ Decode session token to get user_id
+        try:
+            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+            user_id = decoded.get("user_id")
+        except Exception as e:
+            logging.error("Error decoding session token: " + str(e))
+            return jsonify({"error": "Invalid or expired session token."}), 401
+
+        if not user_id:
+            return jsonify({"error": "No user_id found in session token."}), 401
+
+        # 3️⃣ Get date range & AI query from query params
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        query = request.args.get("query")  # Example: "Find all food places over £20"
+
+        if not start_date or not end_date or not query:
+            return jsonify({"error": "start_date, end_date, and query parameters are required."}), 400
+
+        # 4️⃣ Fetch all transactions from QuickBooks
+        transactions = get_qb_transactions_raw(user_id, start_date, end_date)
+
+        # 5️⃣ Determine AI Model (GPT-3.5 Turbo vs GPT-4 Turbo)
+        use_gpt4 = should_use_gpt4(query)
+        model = "gpt-4-turbo" if use_gpt4 else "gpt-3.5-turbo"
+
+        logging.info(f"Using {model} for AI filtering")
+
+        # 6️⃣ Call OpenAI for filtering
+        gpt_response = ask_gpt_to_filter(transactions, query, model)
+
+        # 7️⃣ Return the AI-filtered transactions
+        return jsonify({"transactions": gpt_response}), 200
+
+    except Exception as e:
+        logging.error("Error in /fetch-transactions-ai: " + str(e))
+        return jsonify({"error": str(e)}), 500
 
 
 # ------------------------------------------
