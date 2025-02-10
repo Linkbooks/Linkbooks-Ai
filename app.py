@@ -2282,83 +2282,206 @@ def fetch_transactions_route():
         return jsonify({"error": str(e)}), 500
 
 
+#-----------Test Transactions Route-----------#
+
+def filter_transactions_local(transactions: list, tx_type_filter: str = None, name_filter: str = None) -> list:
+    """
+    Filters the list of transaction dicts based on:
+      - transaction_type (exact or partial match),
+      - name (exact or partial match).
+    Matching is done case-insensitively.
+    
+    :param transactions: The raw list of transaction dicts (date, transaction_type, name, etc.)
+    :param tx_type_filter: A string to filter transaction_type (e.g. 'Expense', 'Invoice', etc.).
+    :param name_filter: A string to filter the name column (e.g. 'Amazon', 'Warner Bros').
+    :return: A new list of transactions that match both filters (if provided).
+    """
+    filtered = []
+    for txn in transactions:
+        # By default, include this transaction unless it fails a filter.
+        include = True
+
+        if tx_type_filter:
+            # If the user typed e.g. 'expense', we can do a case-insensitive substring check:
+            if tx_type_filter.lower() not in txn["transaction_type"].lower():
+                include = False
+
+        if name_filter and include:  # Only check name if still included
+            if name_filter.lower() not in txn["name"].lower():
+                include = False
+
+        if include:
+            filtered.append(txn)
+    return filtered
+
+
+def get_qb_transactions_raw(user_id: str, start_date: str, end_date: str) -> list:
+    """
+    Calls the QuickBooks TransactionList report for the given user_id and date range.
+    Returns a list of transaction dicts (with keys like date, transaction_type, name, etc.).
+    No local filtering is applied here.
+
+    :param user_id: The user whose tokens to use.
+    :param start_date: e.g. '2024-08-01' (YYYY-MM-DD)
+    :param end_date: e.g. '2024-08-31' (YYYY-MM-DD)
+    :return: List of dicts, each representing a single transaction row.
+    """
+    # 1) Retrieve and refresh tokens if necessary
+    tokens = get_quickbooks_tokens(user_id)
+    access_token = tokens.get("access_token")
+    realm_id = tokens.get("realm_id")
+    expiry_str = tokens.get("token_expiry")
+
+    if not access_token or not realm_id:
+        raise Exception("Missing QuickBooks tokens or realm_id for this user.")
+
+    if expiry_str:
+        expiry_dt = datetime.fromisoformat(expiry_str)
+        if datetime.utcnow() > expiry_dt:
+            logging.info("Token expired; refreshing tokens...")
+            refresh_access_token(user_id)
+            tokens = get_quickbooks_tokens(user_id)
+            access_token = tokens.get("access_token")
+            realm_id = tokens.get("realm_id")
+
+    # 2) Call the QuickBooks TransactionList endpoint
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json"
+    }
+    base_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/TransactionList"
+    params = {
+        "start_date": start_date,
+        "end_date": end_date
+    }
+    resp = requests.get(base_url, headers=headers, params=params)
+
+    # Check for mid-request expiry
+    if resp.status_code == 401:
+        logging.info("Token might have expired again. Attempting a second refresh...")
+        refresh_access_token(user_id)
+        tokens = get_quickbooks_tokens(user_id)
+        access_token = tokens.get("access_token")
+        headers["Authorization"] = f"Bearer {access_token}"
+        resp = requests.get(base_url, headers=headers, params=params)
+
+    if resp.status_code != 200:
+        logging.error(f"Error fetching TransactionList: {resp.text}")
+        raise Exception(f"QuickBooks API error: {resp.status_code} {resp.text}")
+
+    # 3) Parse the JSON
+    data = resp.json()
+    rows = data.get("Rows", {}).get("Row", [])
+    transactions = []
+
+    # We know from your JSON that:
+    #  Col 0 => Date
+    #  Col 1 => Transaction Type
+    #  Col 2 => Doc Num (No.)
+    #  Col 3 => Posting (Yes/No)
+    #  Col 4 => Name (Vendor, Customer, etc.)
+    #  Col 5 => Memo/Description
+    #  Col 6 => Account
+    #  Col 7 => Split
+    #  Col 8 => Amount
+
+    for row in rows:
+        # If the row has nested rows:
+        if "Rows" in row and "Row" in row["Rows"]:
+            for data_row in row["Rows"]["Row"]:
+                if data_row.get("type") != "Data":
+                    continue
+                col_data = data_row.get("ColData", [])
+                if len(col_data) < 9:
+                    continue
+                transactions.append({
+                    "date": col_data[0].get("value", ""),
+                    "transaction_type": col_data[1].get("value", ""),
+                    "doc_num": col_data[2].get("value", ""),
+                    "posting": col_data[3].get("value", ""),
+                    "name": col_data[4].get("value", ""),
+                    "memo": col_data[5].get("value", ""),
+                    "account": col_data[6].get("value", ""),
+                    "split": col_data[7].get("value", ""),
+                    "amount": col_data[8].get("value", "")
+                })
+        else:
+            # Standalone row
+            if row.get("type") != "Data":
+                continue
+            col_data = row.get("ColData", [])
+            if len(col_data) < 9:
+                continue
+            transactions.append({
+                "date": col_data[0].get("value", ""),
+                "transaction_type": col_data[1].get("value", ""),
+                "doc_num": col_data[2].get("value", ""),
+                "posting": col_data[3].get("value", ""),
+                "name": col_data[4].get("value", ""),
+                "memo": col_data[5].get("value", ""),
+                "account": col_data[6].get("value", ""),
+                "split": col_data[7].get("value", ""),
+                "amount": col_data[8].get("value", "")
+            })
+
+    return transactions
+
+
 @app.route('/test-transactions', methods=['GET'])
 def test_transactions():
     """
-    A simple test endpoint to fetch the TransactionList report from QuickBooks
-    using the session user_id (from the session token). The caller must supply
-    'start_date' and 'end_date' query parameters (in YYYY-MM-DD format).
-
+    A test endpoint for pulling QuickBooks transactions within a specified date range,
+    and optionally filtering by transaction type and name.
+    
     Example usage:
-      https://linkbooksai.com/test-transactions?start_date=2024-08-01&end_date=2024-08-31
+      GET /test-transactions?start_date=2024-08-01&end_date=2024-08-31
+      Optional filters:
+        &transaction_type=Expense
+        &name=Amazon
     """
     try:
-        # Retrieve the session token from cookies.
-        session_token = request.cookies.get('session_token')
+        # 1) Identify the user from session token
+        session_token = request.cookies.get("session_token")
         if not session_token:
             return jsonify({"error": "No session token provided."}), 401
 
-        # Decode the session token to get the user_id.
         try:
             decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
             user_id = decoded.get("user_id")
         except Exception as e:
-            logging.error("Error decoding session token: " + str(e))
+            logging.error(f"Error decoding token: {e}")
             return jsonify({"error": "Invalid or expired session token."}), 401
 
         if not user_id:
             return jsonify({"error": "No user_id found in session token."}), 401
 
-        # Get the date range from the query parameters.
+        # 2) Grab required date range
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
         if not start_date or not end_date:
-            return jsonify({"error": "Both start_date and end_date query parameters are required."}), 400
+            return jsonify({"error": "start_date and end_date are required."}), 400
 
-        # Retrieve QuickBooks tokens from Supabase.
-        tokens = get_quickbooks_tokens(user_id)
-        access_token = tokens.get("access_token")
-        realm_id = tokens.get("realm_id")
-        if not access_token or not realm_id:
-            return jsonify({"error": "Missing QuickBooks tokens for this user."}), 400
+        # 3) Optional local filters
+        tx_type_filter = request.args.get("transaction_type")  # e.g. "Expense"
+        name_filter = request.args.get("name")                 # e.g. "Amazon"
 
-        # Check token expiry and refresh if necessary.
-        expiry_str = tokens.get("token_expiry")
-        if expiry_str:
-            expiry_dt = datetime.fromisoformat(expiry_str)
-            if datetime.utcnow() > expiry_dt:
-                logging.info("Token expired; refreshing tokens...")
-                refresh_access_token(user_id)
-                tokens = get_quickbooks_tokens(user_id)
-                access_token = tokens.get("access_token")
-                realm_id = tokens.get("realm_id")
+        # 4) Fetch raw transactions from QuickBooks
+        raw_transactions = get_qb_transactions_raw(user_id, start_date, end_date)
 
-        # Build the QuickBooks API request.
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json"
-        }
-        base_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/TransactionList"
-        params = {
-            "start_date": start_date,
-            "end_date": end_date
-        }
-        response = requests.get(base_url, headers=headers, params=params)
+        # 5) Apply local filters if provided
+        filtered = filter_transactions_local(
+            raw_transactions,
+            tx_type_filter=tx_type_filter,
+            name_filter=name_filter
+        )
 
-        # If there's an error, log and return the error details.
-        if response.status_code != 200:
-            logging.error("Error fetching TransactionList report: " + response.text)
-            return jsonify({
-                "error": "Failed to fetch TransactionList report",
-                "details": response.text
-            }), response.status_code
-
-        # Return the raw JSON response from QuickBooks.
-        return jsonify(response.json()), 200
+        # 6) Return the final data
+        return jsonify({"transactions": filtered}), 200
 
     except Exception as e:
-        logging.error("Error in /test-transactions: " + str(e))
+        logging.error(f"Error in /test-transactions: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 # ------------------------------------------
