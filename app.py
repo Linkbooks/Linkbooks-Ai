@@ -740,6 +740,110 @@ def fetch_report(
         logging.error(f"Error fetching {report_type} report: {response.text}")
         raise Exception(f"Failed to fetch {report_type} report: {response.status_code} {response.text}")
 
+#--------------- Fetch Transactions Def -------------------#
+
+def fetch_transactions(user_id: str, qb_params: dict) -> dict:
+    """
+    Fetches the TransactionList report from QuickBooks using a dynamic set of query parameters
+    and returns the transactions (optionally filtering further by vendor if needed).
+
+    :param user_id: The QuickBooks-connected user ID.
+    :param qb_params: Dictionary of query parameters to send to the QB API.
+    :return: A dict containing a list of processed transaction rows.
+    """
+    # 1) Retrieve tokens from Supabase
+    tokens = get_quickbooks_tokens(user_id)
+    access_token = tokens.get("access_token")
+    realm_id = tokens.get("realm_id")
+    expiry_str = tokens.get("token_expiry")
+
+    if not access_token or not realm_id:
+        raise Exception("Missing QuickBooks tokens or realm_id for this user.")
+
+    # 2) Check token expiry and refresh if needed
+    if expiry_str:
+        expiry_dt = datetime.fromisoformat(expiry_str)
+        if datetime.utcnow() > expiry_dt:
+            logging.info("Access token expired; refreshing tokens...")
+            refresh_access_token(user_id)
+            tokens = get_quickbooks_tokens(user_id)
+            access_token = tokens.get("access_token")
+            realm_id = tokens.get("realm_id")
+
+    # 3) Build the API request
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json"
+    }
+    base_url = f"https://quickbooks.api.intuit.com/v3/company/{realm_id}/reports/TransactionList"
+
+    # Pass qb_params directly so that any supported QB parameter is included.
+    response = requests.get(base_url, headers=headers, params=qb_params)
+
+    # 4) Handle mid-request token expiry
+    if response.status_code == 401:
+        logging.info("Token might have expired mid-request. Attempting second refresh...")
+        refresh_access_token(user_id)
+        tokens = get_quickbooks_tokens(user_id)
+        access_token = tokens.get("access_token")
+        headers["Authorization"] = f"Bearer {access_token}"
+        response = requests.get(base_url, headers=headers, params=qb_params)
+
+    if response.status_code != 200:
+        logging.error(f"Error fetching TransactionList report: {response.text}")
+        raise Exception(f"Failed to fetch TransactionList report: {response.status_code} {response.text}")
+
+    report_data = response.json()
+
+    # 5) Process the JSON response to extract transaction rows.
+    # The report returns rows that may be grouped (e.g., by vendor) or flat.
+    transactions = []
+    rows = report_data.get("Rows", {}).get("Row", [])
+    
+    # Optional: If a vendor filter was provided in qb_params, we can apply extra filtering.
+    vendor_filter = qb_params.get("vendor")
+    
+    for row in rows:
+        if "Rows" in row and "Row" in row["Rows"]:
+            for data_row in row["Rows"]["Row"]:
+                col_data = data_row.get("ColData", [])
+                if vendor_filter:
+                    name_value = col_data[4].get("value", "")  # assuming column index 4 is "Name"
+                    if vendor_filter.lower() not in name_value.lower():
+                        continue
+                transactions.append({
+                    "date": col_data[0].get("value"),
+                    "transaction_type": col_data[1].get("value"),
+                    "doc_num": col_data[2].get("value"),
+                    "posting": col_data[3].get("value"),
+                    "name": col_data[4].get("value"),
+                    "department": col_data[5].get("value"),
+                    "memo": col_data[6].get("value"),
+                    "account": col_data[7].get("value"),
+                    "split": col_data[8].get("value"),
+                    "amount": col_data[9].get("value")
+                })
+        else:
+            col_data = row.get("ColData", [])
+            if col_data:
+                if vendor_filter:
+                    name_value = col_data[4].get("value", "")
+                    if vendor_filter.lower() not in name_value.lower():
+                        continue
+                transactions.append({
+                    "date": col_data[0].get("value"),
+                    "transaction_type": col_data[1].get("value"),
+                    "doc_num": col_data[2].get("value"),
+                    "posting": col_data[3].get("value"),
+                    "name": col_data[4].get("value"),
+                    "department": col_data[5].get("value"),
+                    "memo": col_data[6].get("value"),
+                    "account": col_data[7].get("value"),
+                    "split": col_data[8].get("value"),
+                    "amount": col_data[9].get("value")
+                })
+
+    return {"transactions": transactions}
 
 
 # ------------------------------------------------------------------------------
@@ -2057,6 +2161,69 @@ def fetch_reports_route():
     except Exception as e:
         logging.error(f"Error in /fetch-reports: {e}")
         return jsonify({"error": str(e)}), 500
+
+#-------------- Fetch Transactions Route --------------#
+@app.route('/fetch-transactions', methods=['GET'])
+def fetch_transactions_route():
+    """
+    Fetches a TransactionList report from QuickBooks with dynamic query parameters.
+    Supports any QB query parameter (such as start_date, end_date, vendor, payment_method, etc.).
+    """
+    try:
+        chat_session_id = request.args.get('chatSessionId')
+        session_token = request.cookies.get('session_token')
+        user_id = None
+
+        # 1) Try to decode the user_id from the session token
+        if session_token:
+            try:
+                decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+                user_id = decoded.get("user_id")
+            except jwt.ExpiredSignatureError:
+                logging.error("Session token expired.")
+                return jsonify({"error": "Session token expired. Please log in again."}), 401
+            except jwt.InvalidTokenError:
+                logging.error("Invalid session token.")
+                return jsonify({"error": "Invalid session token. Please log in again."}), 401
+
+        # 2) If no user_id from the token, look up using chatSessionId
+        if not user_id and chat_session_id:
+            user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+            if user_lookup.data:
+                user_id = user_lookup.data[0]["id"]
+            else:
+                logging.error(f"No user found for chatSessionId: {chat_session_id}")
+                return jsonify({"error": "User not found for given chatSessionId"}), 404
+
+        if not user_id:
+            logging.error("No user_id found via session token or chatSessionId.")
+            return jsonify({"error": "No user_id found. Please log in or link session."}), 401
+
+        # 3) Build a dictionary of allowed QB query parameters from the request.
+        allowed_params = [
+            "date_macro", "payment_method", "duedate_macro", "arpaid", "bothamount", "transaction_type", "docnum",
+            "start_moddate", "source_account_type", "group_by", "start_date", "department", "start_duedate", "columns",
+            "end_duedate", "vendor", "end_date", "memo", "appaid", "moddate_macro", "printed", "createdate_macro", "cleared",
+            "customer", "qzurl", "term", "end_createdate", "name", "sort_by", "sort_order", "start_createdate", "end_moddate"
+        ]
+        qb_params = {}
+        for param in allowed_params:
+            value = request.args.get(param)
+            if value is not None:
+                qb_params[param] = value
+
+        # 4) Fetch the transactions using our helper
+        transactions_data = fetch_transactions(user_id=user_id, qb_params=qb_params)
+
+        # 5) Return the resulting JSON
+        return jsonify({
+            "data": transactions_data
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error in /fetch-transactions: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 
 
