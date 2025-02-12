@@ -1,39 +1,65 @@
 import { json } from "@sveltejs/kit";
+import type { RequestHandler } from '@sveltejs/kit';
 
-export async function POST({ request }) {
+// src/routes/api/chat/+server.ts
+
+// Helper function to convert a Node stream to a Web ReadableStream
+function nodeStreamToWebStream(nodeStream: any): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      nodeStream.on('data', (chunk: any) => {
+        controller.enqueue(chunk);
+      });
+      nodeStream.on('end', () => {
+        controller.close();
+      });
+      nodeStream.on('error', (err: any) => {
+        controller.error(err);
+      });
+    }
+  });
+}
+
+export const POST: RequestHandler = async ({ request }) => {
   try {
     const { message } = await request.json();
     const cookie = request.headers.get("cookie") || "";
-
-    console.log("🔄 Sending message to backend:", message);
 
     const response = await fetch("http://localhost:5000/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Cookie": cookie // Forward the cookie to the backend
+        "Cookie": cookie
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message })
     });
 
-    console.log("✅ Backend responded with status:", response.status);
-
     if (response.status === 401) {
-      return json({ error: "Unauthorized: Please log in again." }, { status: 401 });
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: Please log in again." }),
+        { status: 401 }
+      );
     }
 
-    const data = await response.json();
+    // Check that response.body is not null.
+    if (!response.body) {
+      throw new Error("No response body");
+    }
+
+    // Determine if the response.body is a Web ReadableStream
+    const stream = typeof response.body.getReader === "function"
+      ? response.body
+      : nodeStreamToWebStream(response.body);
+
+    return new Response(stream, {
+      headers: { "Content-Type": "text/event-stream" }
+    });
     
-    console.log("📩 Backend Response:", data);
-
-    if (!data.response) {
-      return json({ reply: "No valid response from AI." });
-    }
-
-    return json({ reply: data.response });
-
-  } catch (error) {
+  } catch (error: any) {
     console.error("❌ Error in API:", error);
-    return json({ error: "Failed to connect to AI" }, { status: 500 });
+    return new Response(
+      JSON.stringify({ error: "Failed to connect to AI" }),
+      { status: 500 }
+    );
   }
-}
+};

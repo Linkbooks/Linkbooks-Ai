@@ -1,28 +1,19 @@
 <script lang="ts">
-	// Import the marked library
-	import {marked} from 'marked';
+	import { onMount } from 'svelte';
 
 	interface Message {
 		role: string;
 		content: string;
 	}
 
-	interface ChatResponse {
-		reply: string;
-	}
-
 	let messages: Message[] = [];
 	let userInput: string = '';
 	let loading: boolean = false;
 
-	// Use the marked library for markdown conversion
-	function parseMarkdown(text: string): string {
-		return marked.parse(text) as string;
-	}
-
 	async function sendMessage() {
 		if (!userInput.trim()) return;
 
+		// ✅ Add user message to UI
 		messages = [...messages, { role: 'user', content: userInput }];
 		const input = userInput;
 		userInput = '';
@@ -36,14 +27,37 @@
 				body: JSON.stringify({ message: input })
 			});
 
-			const data: ChatResponse = await response.json();
+			// ✅ Handle streaming response
+			if (!response.body) {
+				console.error("No response body");
+				loading = false;
+				return;
+			}
 
-			if (data.reply) {
-				const formattedContent = parseMarkdown(data.reply.trim());
-				console.log('🔍 Parsed AI Response (HTML):', formattedContent);
-				messages = [...messages, { role: 'assistant', content: formattedContent }];
-			} else {
-				console.error('No valid response from AI');
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let assistantMessage = { role: 'assistant', content: "" };
+			messages = [...messages, assistantMessage];
+
+			let streamedResponse = "";
+
+			while (true) {
+				const { value, done } = await reader.read();
+				if (done) break;
+
+				streamedResponse += decoder.decode(value, { stream: true });
+
+				// ✅ Split streamed response into individual message chunks
+				const chunks = streamedResponse.split("\n\n");
+
+				// ✅ Extract last valid message chunk
+				const lastChunk = chunks[chunks.length - 2]; // Last complete message
+
+				if (lastChunk?.startsWith("data:")) {
+					const content = lastChunk.replace("data:", "").trim();
+					assistantMessage.content += content;
+					messages = [...messages]; // ✅ Force reactivity update
+				}
 			}
 		} catch (error) {
 			console.error('Error:', error);
@@ -60,7 +74,6 @@
 		{#each messages as msg}
 			<div class="message {msg.role}">
 				<strong>{msg.role === 'user' ? 'You' : 'AI'}:</strong>
-				<!-- The message content is wrapped so that the CSS applies correctly -->
 				<div class="message-content" data-message="true">
 					{@html msg.content}
 				</div>
@@ -165,8 +178,8 @@
 	:global(.message-content ol) {
 		padding-left: 22px;
 		margin: 4px 0;
-    margin-top: -3px;
-    margin-bottom: -12px;
+    	margin-top: -3px;
+    	margin-bottom: -12px;
 	}
 	:global(.message-content ul) {
 		list-style-type: disc;

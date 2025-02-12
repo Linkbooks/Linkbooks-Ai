@@ -3,12 +3,12 @@ import logging
 import requests
 import secrets
 import random
-import re
+import re, sys
 import string
 import bcrypt
 import time
 import atexit
-from flask import render_template, redirect, request, make_response, url_for, jsonify, Flask, session
+from flask import render_template, redirect, request, Response, stream_with_context, make_response, url_for, jsonify, Flask, session
 from flask_mail import Mail, Message
 from flask_cors import CORS
 from datetime import datetime, timedelta, timezone
@@ -17,7 +17,7 @@ from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
 from gotrue.errors import AuthApiError  # Correct import for error handling
 from bcrypt import checkpw
-from openai import OpenAI
+from openai import OpenAI, AssistantEventHandler
 import jwt
 import stripe
 from functools import wraps
@@ -362,7 +362,9 @@ def create_user_with_email(user_data):
 
     return user_id
 
-
+# ✅ Debug Logging Function (Ensure this is before generate())
+def log_debug(msg):
+    print(f"{datetime.now().isoformat()} - {msg}", flush=True)
 
 def generate_session_token(user_id, email):
     """
@@ -2868,39 +2870,87 @@ def analyze_reports():
 # ------------------------------------------#
 #            Linkbooks AI Chat              #
 # ------------------------------------------#
-    
+
+# ✅ Stream Handler Class
+class StreamHandler(AssistantEventHandler):
+    """
+    Handles streaming AI responses.
+    """
+    def __init__(self):
+        super().__init__()  # ✅ Properly initialize parent class
+        self.response_text = ""
+
+    def on_text_created(self, text):
+        print("\nAssistant:", end="", flush=True)
+
+    def on_text_delta(self, delta, snapshot):
+        if delta.value:
+            self.response_text += delta.value
+            print(delta.value, end="", flush=True)
+
+    def on_tool_call_created(self, tool_call):
+        print(f"\nAssistant used tool: {tool_call.type}")
+
+    def on_tool_call_delta(self, delta, snapshot):
+        if delta.type == "code_interpreter" and delta.code_interpreter.input:
+            print(delta.code_interpreter.input, end="", flush=True)
+
+    def get_response(self):
+        return self.response_text  # ✅ Allows generator to yield from this
+
+# ✅ Function to handle streaming
+def generate(thread_id):
+    handler = StreamHandler()
+    print("🔄 [DEBUG] Streaming Started", flush=True)
+
+    # ✅ Ensure connection remains open by sending a "keep-alive" message first
+    yield ": keep-alive\n\n"
+    sys.stdout.flush()
+
+    with openai_client.beta.threads.runs.stream(
+        thread_id=thread_id,
+        assistant_id=ASSISTANT_ID,
+        event_handler=handler
+    ) as stream:
+        for chunk in stream:
+            if chunk.event == "text_delta":
+                output = f"data: {chunk.data.delta.value}\n\n"
+                print(f"📝 [DEBUG] Sending chunk: {output.strip()}", flush=True)
+
+                yield output  # ✅ Yielding the response in small chunks
+                sys.stdout.flush()  # ✅ Force immediate streaming
+
+    print("✅ [DEBUG] Streaming Complete", flush=True)
+
+
+
+# ✅ Flask API Route for AI Chat
 @app.route('/chat', methods=['POST'])
 def chat_with_assistant():
-    """
-    Handles user chat requests, ensures a unique thread per user, and sends messages to the assistant.
-    """
     try:
-        # 1️⃣ Get session tokens (Check both possible names)
+        print("📩 [DEBUG] Incoming request to /chat", flush=True)
+
+        # ✅ Get session token
         session_token = request.cookies.get('session_token') or request.cookies.get('session')
         if not session_token:
-            logging.error("❌ No session token provided.")
+            print("❌ [ERROR] No session token provided.", flush=True)
             return jsonify({"error": "No session token provided."}), 401
 
-        # 2️⃣ Decode session token to get user_id
-        user_id = None
+        # ✅ Decode user_id from session token
         try:
             decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
             user_id = decoded.get("user_id")
-        except jwt.ExpiredSignatureError:
-            logging.error("❌ Session token expired.")
-            return jsonify({"error": "Session token expired. Please log in again."}), 401
-        except jwt.InvalidTokenError:
-            logging.error("❌ Invalid session token.")
-            return jsonify({"error": "Invalid session token. Please log in again."}), 401
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            print("❌ [ERROR] Invalid or expired session token.", flush=True)
+            return jsonify({"error": "Session token expired or invalid. Please log in again."}), 401
 
-        # Ensure user_id exists
         if not user_id:
-            logging.error("❌ No user_id found in session token.")
+            print("❌ [ERROR] No user_id found in session token.", flush=True)
             return jsonify({"error": "No user_id found. Please log in again."}), 401
 
-        logging.info(f"✅ Valid session token found for user: {user_id}")
+        print(f"✅ [DEBUG] Valid session token found for user: {user_id}", flush=True)
 
-        # 3️⃣ Get user's existing thread ID (or create a new one if none exists)
+        # ✅ Get or create a thread ID in Supabase
         thread_query = supabase.table("user_threads").select("thread_id").eq("user_id", user_id).execute()
         thread_id = thread_query.data[0]["thread_id"] if thread_query.data else None
 
@@ -2909,94 +2959,28 @@ def chat_with_assistant():
             thread_id = thread.id
             supabase.table("user_threads").insert({"user_id": user_id, "thread_id": thread_id}).execute()
 
-        # 4️⃣ Get user message
-        data = request.json
-        user_message = data.get("message")
-        if not user_message:
-            return jsonify({"error": "Message is required"}), 400
+        print(f"✅ [DEBUG] Using thread_id: {thread_id}", flush=True)
 
-        logging.info(f"📩 User Message: {user_message} (Thread ID: {thread_id})")
-
-        # 5️⃣ Send message to assistant thread
-        openai_client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=user_message
+        # ✅ Fix: Use the correct `generate(thread_id)` function
+        response = Response(
+            stream_with_context(generate(thread_id)),  # ✅ Pass the correct thread_id
+            content_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no"  # ✅ Prevents buffering
+            }
         )
 
-        # 6️⃣ Start an assistant run
-        run = openai_client.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id=ASSISTANT_ID
-        )
+        # ✅ Debugging: Print response headers
+        print("📩 [DEBUG] Response Headers:", response.headers, flush=True)
 
-        # 7️⃣ Poll for completion (with timeout)
-        timeout = 30  # Max wait time in seconds
-        start_time = time.time()
-
-        while True:
-            run_status = openai_client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
-            if run_status.status != "completed":
-                logging.debug(f"🔄 Polling AI Status: {run_status.status}")
-            else:
-                logging.info("✅ AI Processing Complete")
-
-
-            if run_status.status == "completed":
-                break
-            elif time.time() - start_time > timeout:
-                logging.error("⚠️ AI response timeout")
-                return jsonify({"error": "AI response timeout"}), 500
-
-            time.sleep(1)
-
-        # 8️⃣ Fetch the AI's response (ensure correct ordering)
-        messages = openai_client.beta.threads.messages.list(
-            thread_id=thread_id,
-            order="desc",  # Get latest messages first
-            limit=3  # Only fetch the last few messages
-        )
-
-        logging.info(f"📜 Latest AI Response Retrieved for User {user_id}")
-        # ✅ Debug: Log what messages are received from OpenAI
-        logging.debug(f"📜 OpenAI Messages Retrieved for User {user_id}:")
-        for msg in messages.data:
-            logging.debug(f"🔹 {msg.role.upper()}: {msg.content[0].text.value}")
-
-
-        # ✅ Sort messages by timestamp (ensure correct order)
-        sorted_messages = sorted(messages.data, key=lambda msg: msg.created_at)
-
-        # ✅ Find the latest user message timestamp
-        latest_user_message_time = max(
-            [msg.created_at for msg in sorted_messages if msg.role == "user"],
-            default=0
-        )
-
-        # ✅ Find the most recent assistant message **after** the last user message
-        ai_messages = [
-            msg for msg in sorted_messages if msg.role == "assistant" and msg.created_at > latest_user_message_time
-        ]
-
-        if not ai_messages:
-            return jsonify({"error": "No AI response received."}), 500
-
-        latest_response = ai_messages[-1].content[0].text.value  # Get the latest assistant response
-        logging.info(f"✅ AI Response: {latest_response}")
-        
-        # ✅ Ensure Markdown compatibility
-        latest_response = latest_response.replace("\n", "  \n")  # Ensures newlines are respected
-
-        # ✅ Remove excessive line breaks (prevents big gaps)
-        latest_response = re.sub(r'\n\s*\n', '\n', latest_response)
-
-
-        return jsonify({"response": latest_response})  # Send only the latest AI message
-
+        return response  # ✅ Return a valid streaming response
 
     except Exception as e:
-        logging.error(f"❌ Error in /chat: {str(e)}")
+        print(f"❌ [ERROR] {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
+
+
 
 # ✅ Verify Assistant Configuration
 try:
