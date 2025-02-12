@@ -3,12 +3,14 @@ import logging
 import requests
 import secrets
 import random
+import re
 import string
 import bcrypt
 import time
 import atexit
 from flask import render_template, redirect, request, make_response, url_for, jsonify, Flask, session
 from flask_mail import Mail, Message
+from flask_cors import CORS
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -25,6 +27,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.events import EVENT_JOB_ERROR
 from urllib.parse import quote
 import uuid  # Added for chat_session_id generation
+
+#------------------- Open AI Assistant ID -------------------#
+ASSISTANT_ID = "asst_0w2HuDpG8cgKC3liBnHtUWSO"
+
+# ✅ Store user threads in memory (for now)
+user_threads = {}
+#------------------------------------------------------------#
 
 # ------------------------------------------------------------------------------
 # Environment variables
@@ -189,6 +198,11 @@ limiter = Limiter(
     key_func=get_remote_address
 )
 limiter.init_app(app)
+
+# --------------------------Enable CORS-----------------------------------------
+# Enable CORS for frontend (Svelte) and allow credentials
+CORS(app, supports_credentials=True, origins="http://localhost:5173")  # Adjust for your frontend port
+# ------------------------------------------------------------------------------
 
 #-------------------------  Custom Jinja Filter  ------------------------------#
 @app.template_filter('datetimeformat')
@@ -1543,14 +1557,17 @@ def logout():
     Logs the user out by revoking QuickBooks tokens and deleting relevant tokens from Supabase.
     """
     try:
-        session_token = request.cookies.get('session_token')
+        session_token = request.cookies.get('session_token') or request.cookies.get('session')
         if not session_token:
-            raise Exception("No session token found.")
+            logging.warning("No session token found during logout.")
+            return render_template("logout.html", message="You have been logged out successfully.")
 
         decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
         user_id = decoded.get("user_id")
+
         if not user_id:
-            raise Exception("No user_id found in session token.")
+            logging.warning("No user_id found in session token during logout.")
+            return render_template("logout.html", message="You have been logged out successfully.")
 
         # Revoke QuickBooks tokens
         qb_response = supabase.table("quickbooks_tokens").select("refresh_token").eq("user_id", user_id).execute()
@@ -1561,17 +1578,17 @@ def logout():
         # Delete QuickBooks tokens
         supabase.table("quickbooks_tokens").delete().eq("user_id", user_id).execute()
 
-        # Delete the session_token cookie
+        # 🔥 Expire both session tokens
         resp = make_response(render_template("logout.html", message="You have been logged out successfully."))
-        resp.delete_cookie("session_token")
-        logging.info("User logged out successfully.")
+        resp.set_cookie("session_token", "", expires=0, path="/")
+        resp.set_cookie("session", "", expires=0, path="/")
+
+        logging.info("✅ Both session tokens deleted successfully.")
         return resp
 
     except Exception as e:
-        logging.error(f"Error during logout: {e}")
+        logging.error(f"❌ Error during logout: {e}")
         return render_template("logout.html", message="An error occurred during logout. Please try again."), 500
-
-
 
 
 # ------------------------------------------
@@ -2210,171 +2227,6 @@ def fetch_reports_route():
     
 #-------------Fetch Transactions Helpers-------------#
 
-def should_use_gpt4(query):
-    """
-    Determines if GPT-4 Turbo should be used based on complexity.
-    """
-    if len(query) > 100:  # Example: Longer queries are likely more complex
-        return True
-    keywords = ["approximate", "similar to", "fuzzy match", "group by", "trend"]
-    if any(kw in query.lower() for kw in keywords):  # Keywords suggest deeper reasoning
-        return True
-    return False
-
-import openai
-
-def ask_gpt_to_filter(transactions, query, model):
-    """
-    Sends transactions and a query to OpenAI for intelligent filtering.
-    """
-    openai_client = openai.OpenAI()  # Ensure OpenAI client is initialized properly
-
-    response = openai_client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "You are an AI that analyzes financial transactions and filters them based on user requests."},
-            {"role": "user", "content": f"Here are my transactions:\n{transactions}\n\nFilter them based on this request: {query}"}
-        ]
-    )
-    return response.choices[0].message.content  # Corrected path to response content
-
-
-
-
-#-------------- Fetch Transactions Route --------------#
-@app.route('/fetch-transactions', methods=['GET'])
-def fetch_transactions_route():
-    """
-    Fetches the TransactionList report from QuickBooks using dynamic query parameters.
-    
-    Query parameters such as startDate, endDate, date_macro, payment_method, etc. are sent directly.
-    Parameters like vendor, customer, name, department, and memo are removed from the QB request
-    and applied locally after the full report is returned.
-    
-    Example usage:
-      /fetch-transactions?chatSessionId=...&startDate=2024-08-01&endDate=2024-08-31&vendor=McDonald's
-    """
-    try:
-        chat_session_id = request.args.get('chatSessionId')
-        session_token = request.cookies.get('session_token')
-        user_id = None
-
-        # 1) Extract user_id from the session token if available.
-        if session_token:
-            try:
-                decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
-                user_id = decoded.get("user_id")
-            except jwt.ExpiredSignatureError:
-                logging.error("Session token expired.")
-                return jsonify({"error": "Session token expired. Please log in again."}), 401
-            except jwt.InvalidTokenError:
-                logging.error("Invalid session token.")
-                return jsonify({"error": "Invalid session token. Please log in again."}), 401
-
-        # 2) If not available, look up user_id via chatSessionId.
-        if not user_id and chat_session_id:
-            user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
-            if user_lookup.data:
-                user_id = user_lookup.data[0]["id"]
-            else:
-                logging.error(f"No user found for chatSessionId: {chat_session_id}")
-                return jsonify({"error": "User not found for given chatSessionId"}), 404
-
-        if not user_id:
-            logging.error("No user_id found via session token or chatSessionId.")
-            return jsonify({"error": "No user_id found. Please log in or link session."}), 401
-
-        # 3) Build a dictionary of allowed QuickBooks query parameters from the request.
-        allowed_params = [
-            "date_macro", "payment_method", "duedate_macro", "arpaid", "bothamount",
-            "transaction_type", "docnum", "start_moddate", "source_account_type",
-            "group_by", "start_date", "department", "start_duedate", "columns",
-            "end_duedate", "end_date", "memo", "appaid", "moddate_macro", "printed",
-            "createdate_macro", "cleared", "customer", "qzurl", "term", "end_createdate",
-            "name", "sort_by", "sort_order", "start_createdate", "end_moddate"
-        ]
-        qb_params = {}
-        for param in allowed_params:
-            value = request.args.get(param)
-            if value is not None:
-                qb_params[param] = value
-
-        # 4) Also capture parameters that require local filtering (e.g., vendor).
-        for key in ["vendor"]:
-            value = request.args.get(key)
-            if value is not None:
-                qb_params[key] = value
-
-        # 5) Call the helper to fetch and filter transactions.
-        transactions_data = fetch_transactions(user_id=user_id, qb_params=qb_params)
-
-        # 6) Return the sanitized transactions.
-        return jsonify({"data": transactions_data}), 200
-
-    except Exception as e:
-        logging.error(f"Error in /fetch-transactions: {e}")
-        return jsonify({"error": str(e)}), 500
-    
-    
-
-
-@app.route('/filter-transactions', methods=['POST'])
-def filter_transactions():
-    try:
-        data = request.json
-        query = data.get("query")
-        transactions = get_qb_transactions_raw(user_id, start_date, end_date)
-
-        # Determine complexity
-        use_gpt4 = should_use_gpt4(query)
-
-        # Select model
-        model = "gpt-4-turbo" if use_gpt4 else "gpt-3.5-turbo"
-
-        logging.info(f"Using {model} for filtering")
-
-        gpt_response = ask_gpt_to_filter(transactions, query, model)
-        return jsonify(gpt_response)
-
-    except Exception as e:
-        logging.error(f"Error in /filter-transactions: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-
-
-#-----------Test Transactions Route-----------#
-
-def filter_transactions_local(transactions: list, tx_type_filter: str = None, name_filter: str = None) -> list:
-    """
-    Filters the list of transaction dicts based on:
-      - transaction_type (exact or partial match),
-      - name (exact or partial match).
-    Matching is done case-insensitively.
-    
-    :param transactions: The raw list of transaction dicts (date, transaction_type, name, etc.)
-    :param tx_type_filter: A string to filter transaction_type (e.g. 'Expense', 'Invoice', etc.).
-    :param name_filter: A string to filter the name column (e.g. 'Amazon', 'Warner Bros').
-    :return: A new list of transactions that match both filters (if provided).
-    """
-    filtered = []
-    for txn in transactions:
-        # By default, include this transaction unless it fails a filter.
-        include = True
-
-        if tx_type_filter:
-            # If the user typed e.g. 'expense', we can do a case-insensitive substring check:
-            if tx_type_filter.lower() not in txn["transaction_type"].lower():
-                include = False
-
-        if name_filter and include:  # Only check name if still included
-            if name_filter.lower() not in txn["name"].lower():
-                include = False
-
-        if include:
-            filtered.append(txn)
-    return filtered
-
-
 def get_qb_transactions_raw(user_id: str, start_date: str, end_date: str) -> list:
     """
     Calls the QuickBooks TransactionList report for the given user_id and date range.
@@ -2487,57 +2339,35 @@ def get_qb_transactions_raw(user_id: str, start_date: str, end_date: str) -> lis
     return transactions
 
 
-@app.route('/test-transactions', methods=['GET'])
-def test_transactions():
+def should_use_gpt4(query):
     """
-    Fetches the TransactionList report from QuickBooks for the session user_id.
-    Allows optional filtering by transaction type and name.
-    
-    Example:
-    https://linkbooksai.com/test-transactions?start_date=2024-08-01&end_date=2024-08-31&type=Expense&name=Amazon
+    Determines if GPT-4 Turbo should be used based on complexity.
     """
-    try:
-        # 1️⃣ Get session token from cookies
-        session_token = request.cookies.get('session_token')
-        if not session_token:
-            return jsonify({"error": "No session token provided."}), 401
+    if len(query) > 100:  # Example: Longer queries are likely more complex
+        return True
+    keywords = ["approximate", "similar to", "fuzzy match", "group by", "trend"]
+    if any(kw in query.lower() for kw in keywords):  # Keywords suggest deeper reasoning
+        return True
+    return False
 
-        # 2️⃣ Decode session token to get user_id
-        try:
-            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
-            user_id = decoded.get("user_id")
-        except Exception as e:
-            logging.error("Error decoding session token: " + str(e))
-            return jsonify({"error": "Invalid or expired session token."}), 401
+import openai
 
-        if not user_id:
-            return jsonify({"error": "No user_id found in session token."}), 401
+def ask_gpt_to_filter(transactions, query, model):
+    """
+    Sends transactions and a query to OpenAI for intelligent filtering.
+    """
+    openai_client = openai.OpenAI()  # Ensure OpenAI client is initialized properly
 
-        # 3️⃣ Get date range from query params
-        start_date = request.args.get("start_date")
-        end_date = request.args.get("end_date")
-        if not start_date or not end_date:
-            return jsonify({"error": "Both start_date and end_date query parameters are required."}), 400
+    response = openai_client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "You are an AI that analyzes financial transactions and filters them based on user requests."},
+            {"role": "user", "content": f"Here are my transactions:\n{transactions}\n\nFilter them based on this request: {query}"}
+        ]
+    )
+    return response.choices[0].message.content  # Corrected path to response content
 
-        # 4️⃣ Get optional filters from query parameters
-        tx_type_filter = request.args.get("type")  # e.g., "Expense", "Invoice"
-        name_filter = request.args.get("name")  # e.g., "Amazon", "Warner Bros"
-
-        # 5️⃣ Fetch all transactions from QuickBooks
-        transactions = get_qb_transactions_raw(user_id, start_date, end_date)
-
-        # 6️⃣ Apply local filtering
-        if tx_type_filter or name_filter:
-            transactions = filter_transactions_local(transactions, tx_type_filter, name_filter)
-
-        # 7️⃣ Return filtered transactions
-        return jsonify({"transactions": transactions}), 200
-
-    except Exception as e:
-        logging.error("Error in /test-transactions: " + str(e))
-        return jsonify({"error": str(e)}), 500
-
-#-----------Fetch Transactions AI Route-----------#
+#-------------- Fetch Transactions AI Route --------------#
 
 @app.route('/fetch-transactions-ai', methods=['GET'])
 def fetch_transactions_ai():
@@ -2592,6 +2422,135 @@ def fetch_transactions_ai():
     except Exception as e:
         logging.error("Error in /fetch-transactions-ai: " + str(e))
         return jsonify({"error": str(e)}), 500
+
+
+#-------------- Fetch Transactions Classic Route --------------#
+@app.route('/fetch-transactions', methods=['GET'])
+def fetch_transactions_route():
+    """
+    Fetches the TransactionList report from QuickBooks using dynamic query parameters.
+    
+    Query parameters such as startDate, endDate, date_macro, payment_method, etc. are sent directly.
+    Parameters like vendor, customer, name, department, and memo are removed from the QB request
+    and applied locally after the full report is returned.
+    
+    Example usage:
+      /fetch-transactions?chatSessionId=...&startDate=2024-08-01&endDate=2024-08-31&vendor=McDonald's
+    """
+    try:
+        chat_session_id = request.args.get('chatSessionId')
+        session_token = request.cookies.get('session_token')
+        user_id = None
+
+        # 1) Extract user_id from the session token if available.
+        if session_token:
+            try:
+                decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+                user_id = decoded.get("user_id")
+            except jwt.ExpiredSignatureError:
+                logging.error("Session token expired.")
+                return jsonify({"error": "Session token expired. Please log in again."}), 401
+            except jwt.InvalidTokenError:
+                logging.error("Invalid session token.")
+                return jsonify({"error": "Invalid session token. Please log in again."}), 401
+
+        # 2) If not available, look up user_id via chatSessionId.
+        if not user_id and chat_session_id:
+            user_lookup = supabase.table("user_profiles").select("id").eq("chat_session_id", chat_session_id).execute()
+            if user_lookup.data:
+                user_id = user_lookup.data[0]["id"]
+            else:
+                logging.error(f"No user found for chatSessionId: {chat_session_id}")
+                return jsonify({"error": "User not found for given chatSessionId"}), 404
+
+        if not user_id:
+            logging.error("No user_id found via session token or chatSessionId.")
+            return jsonify({"error": "No user_id found. Please log in or link session."}), 401
+
+        # 3) Build a dictionary of allowed QuickBooks query parameters from the request.
+        allowed_params = [
+            "date_macro", "payment_method", "duedate_macro", "arpaid", "bothamount",
+            "transaction_type", "docnum", "start_moddate", "source_account_type",
+            "group_by", "start_date", "department", "start_duedate", "columns",
+            "end_duedate", "end_date", "memo", "appaid", "moddate_macro", "printed",
+            "createdate_macro", "cleared", "customer", "qzurl", "term", "end_createdate",
+            "name", "sort_by", "sort_order", "start_createdate", "end_moddate"
+        ]
+        qb_params = {}
+        for param in allowed_params:
+            value = request.args.get(param)
+            if value is not None:
+                qb_params[param] = value
+
+        # 4) Also capture parameters that require local filtering (e.g., vendor).
+        for key in ["vendor"]:
+            value = request.args.get(key)
+            if value is not None:
+                qb_params[key] = value
+
+        # 5) Call the helper to fetch and filter transactions.
+        transactions_data = fetch_transactions(user_id=user_id, qb_params=qb_params)
+
+        # 6) Return the sanitized transactions.
+        return jsonify({"data": transactions_data}), 200
+
+    except Exception as e:
+        logging.error(f"Error in /fetch-transactions: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+    
+@app.route('/filter-transactions', methods=['POST'])
+def filter_transactions():
+    try:
+        data = request.json
+        query = data.get("query")
+        transactions = get_qb_transactions_raw(user_id, start_date, end_date)
+
+        # Determine complexity
+        use_gpt4 = should_use_gpt4(query)
+
+        # Select model
+        model = "gpt-4-turbo" if use_gpt4 else "gpt-3.5-turbo"
+
+        logging.info(f"Using {model} for filtering")
+
+        gpt_response = ask_gpt_to_filter(transactions, query, model)
+        return jsonify(gpt_response)
+
+    except Exception as e:
+        logging.error(f"Error in /filter-transactions: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+def filter_transactions_local(transactions: list, tx_type_filter: str = None, name_filter: str = None) -> list:
+    """
+    Filters the list of transaction dicts based on:
+      - transaction_type (exact or partial match),
+      - name (exact or partial match).
+    Matching is done case-insensitively.
+    
+    :param transactions: The raw list of transaction dicts (date, transaction_type, name, etc.)
+    :param tx_type_filter: A string to filter transaction_type (e.g. 'Expense', 'Invoice', etc.).
+    :param name_filter: A string to filter the name column (e.g. 'Amazon', 'Warner Bros').
+    :return: A new list of transactions that match both filters (if provided).
+    """
+    filtered = []
+    for txn in transactions:
+        # By default, include this transaction unless it fails a filter.
+        include = True
+
+        if tx_type_filter:
+            # If the user typed e.g. 'expense', we can do a case-insensitive substring check:
+            if tx_type_filter.lower() not in txn["transaction_type"].lower():
+                include = False
+
+        if name_filter and include:  # Only check name if still included
+            if name_filter.lower() not in txn["name"].lower():
+                include = False
+
+        if include:
+            filtered.append(txn)
+    return filtered
 
 
 # ------------------------------------------
@@ -2905,6 +2864,149 @@ def analyze_reports():
     except Exception as e:
         logging.error(f"Error analyzing reports: {e}")
         return {"error": str(e)}, 500
+    
+# ------------------------------------------#
+#            Linkbooks AI Chat              #
+# ------------------------------------------#
+    
+@app.route('/chat', methods=['POST'])
+def chat_with_assistant():
+    """
+    Handles user chat requests, ensures a unique thread per user, and sends messages to the assistant.
+    """
+    try:
+        # 1️⃣ Get session tokens (Check both possible names)
+        session_token = request.cookies.get('session_token') or request.cookies.get('session')
+        if not session_token:
+            logging.error("❌ No session token provided.")
+            return jsonify({"error": "No session token provided."}), 401
+
+        # 2️⃣ Decode session token to get user_id
+        user_id = None
+        try:
+            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+            user_id = decoded.get("user_id")
+        except jwt.ExpiredSignatureError:
+            logging.error("❌ Session token expired.")
+            return jsonify({"error": "Session token expired. Please log in again."}), 401
+        except jwt.InvalidTokenError:
+            logging.error("❌ Invalid session token.")
+            return jsonify({"error": "Invalid session token. Please log in again."}), 401
+
+        # Ensure user_id exists
+        if not user_id:
+            logging.error("❌ No user_id found in session token.")
+            return jsonify({"error": "No user_id found. Please log in again."}), 401
+
+        logging.info(f"✅ Valid session token found for user: {user_id}")
+
+        # 3️⃣ Get user's existing thread ID (or create a new one if none exists)
+        thread_query = supabase.table("user_threads").select("thread_id").eq("user_id", user_id).execute()
+        thread_id = thread_query.data[0]["thread_id"] if thread_query.data else None
+
+        if not thread_id:
+            thread = openai_client.beta.threads.create()
+            thread_id = thread.id
+            supabase.table("user_threads").insert({"user_id": user_id, "thread_id": thread_id}).execute()
+
+        # 4️⃣ Get user message
+        data = request.json
+        user_message = data.get("message")
+        if not user_message:
+            return jsonify({"error": "Message is required"}), 400
+
+        logging.info(f"📩 User Message: {user_message} (Thread ID: {thread_id})")
+
+        # 5️⃣ Send message to assistant thread
+        openai_client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=user_message
+        )
+
+        # 6️⃣ Start an assistant run
+        run = openai_client.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=ASSISTANT_ID
+        )
+
+        # 7️⃣ Poll for completion (with timeout)
+        timeout = 30  # Max wait time in seconds
+        start_time = time.time()
+
+        while True:
+            run_status = openai_client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+            if run_status.status != "completed":
+                logging.debug(f"🔄 Polling AI Status: {run_status.status}")
+            else:
+                logging.info("✅ AI Processing Complete")
+
+
+            if run_status.status == "completed":
+                break
+            elif time.time() - start_time > timeout:
+                logging.error("⚠️ AI response timeout")
+                return jsonify({"error": "AI response timeout"}), 500
+
+            time.sleep(1)
+
+        # 8️⃣ Fetch the AI's response (ensure correct ordering)
+        messages = openai_client.beta.threads.messages.list(thread_id=thread_id)
+
+        logging.info(f"📜 Latest AI Response Retrieved for User {user_id}")
+
+
+        # ✅ Sort messages by timestamp (ensure correct order)
+        sorted_messages = sorted(messages.data, key=lambda msg: msg.created_at)
+
+        # ✅ Find the latest user message timestamp
+        latest_user_message_time = max(
+            [msg.created_at for msg in sorted_messages if msg.role == "user"],
+            default=0
+        )
+
+        # ✅ Find the most recent assistant message **after** the last user message
+        ai_messages = [
+            msg for msg in sorted_messages if msg.role == "assistant" and msg.created_at > latest_user_message_time
+        ]
+
+        if not ai_messages:
+            return jsonify({"error": "No AI response received."}), 500
+
+        latest_response = ai_messages[-1].content[0].text.value  # Get the latest assistant response
+        logging.info(f"✅ AI Response: {latest_response}")
+        
+        # ✅ Ensure Markdown compatibility
+        latest_response = latest_response.replace("\n", "  \n")  # Ensures newlines are respected
+
+        # ✅ Remove excessive line breaks (prevents big gaps)
+        latest_response = re.sub(r'\n\s*\n', '\n', latest_response)
+
+
+        return jsonify({"response": latest_response})  # Send only the latest AI message
+
+
+    except Exception as e:
+        logging.error(f"❌ Error in /chat: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+# ✅ Verify Assistant Configuration
+try:
+    assistant = openai_client.beta.assistants.retrieve(ASSISTANT_ID)
+    logging.info(f"✅ Assistant Loaded: {assistant.name} ({ASSISTANT_ID})")
+except Exception as e:
+    logging.error(f"❌ Error retrieving assistant: {str(e)}")
+    
+# ✅ Update Assistant Instructions
+assistant = openai_client.beta.assistants.update(
+    assistant_id=ASSISTANT_ID,
+    instructions=(
+        "You are an AI assistant that helps users with QuickBooks transactions and invoices. "
+        "You should remember previous interactions within a thread and provide context-aware responses. "
+        "If a user asks follow-up questions, ensure you refer to previous discussions in the same thread."
+    )
+)
+
 
 # ------------------------------------------
 # Testing OpenAI Endpoints
@@ -2975,13 +3077,9 @@ def debug_env():
     }, 200
 
 
-print(f"OpenAI API Key Loaded: {bool(openai_client.api_key)}")
-
 @app.before_request
 def log_request_info():
-    logging.info(f"Headers: {request.headers}")
-    logging.info(f"Body: {request.get_data()}")
-    logging.info(f"Args: {request.args}")
+    logging.info(f"📩 Incoming request: {request.method} {request.path}")
 
 if __name__ == '__main__':
     app.run(debug=debug_mode)
