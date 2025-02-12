@@ -1,6 +1,6 @@
 <script lang="ts">
 	// Import the marked library
-	import { marked } from 'marked';
+	import {marked} from 'marked';
 
 	interface Message {
 		role: string;

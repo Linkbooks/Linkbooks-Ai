@@ -2951,9 +2951,17 @@ def chat_with_assistant():
             time.sleep(1)
 
         # 8️⃣ Fetch the AI's response (ensure correct ordering)
-        messages = openai_client.beta.threads.messages.list(thread_id=thread_id)
+        messages = openai_client.beta.threads.messages.list(
+            thread_id=thread_id,
+            order="desc",  # Get latest messages first
+            limit=3  # Only fetch the last few messages
+        )
 
         logging.info(f"📜 Latest AI Response Retrieved for User {user_id}")
+        # ✅ Debug: Log what messages are received from OpenAI
+        logging.debug(f"📜 OpenAI Messages Retrieved for User {user_id}:")
+        for msg in messages.data:
+            logging.debug(f"🔹 {msg.role.upper()}: {msg.content[0].text.value}")
 
 
         # ✅ Sort messages by timestamp (ensure correct order)
