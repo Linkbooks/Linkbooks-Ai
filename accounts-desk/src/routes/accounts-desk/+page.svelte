@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { io, Socket } from 'socket.io-client';
-	import Cookies from 'js-cookie'; // Install with: npm install js-cookie
+	import { writable } from 'svelte/store';
 
+	// ✅ Define message structure
 	interface Message {
 		role: string;
 		content: string;
 	}
 
-	let messages: Message[] = [];
+	// ✅ Create store for chat messages
+	export const messages = writable<Message[]>([]);
 	let userInput = '';
 	let loading = false;
 	let socket: Socket;
@@ -19,7 +21,6 @@
 		console.log('🔄 Checking authentication session...');
 
 		try {
-			// ✅ Fetch session token from Flask (DO NOT use js-cookie for HttpOnly cookies)
 			const response = await fetch('http://localhost:5000/auth/status', {
 				method: 'GET',
 				credentials: 'include' // ✅ Ensures cookies are sent
@@ -28,61 +29,42 @@
 			const data = await response.json();
 
 			if (data.logged_in && data.session_token) {
-				console.log('✅ Storing correct session token:', data.session_token);
+				console.log('✅ Session token retrieved:', data.session_token);
 				localStorage.setItem('session_token', data.session_token);
 				sessionToken = data.session_token;
 			} else {
-				console.warn('❌ Not logged in, redirecting to Flask login...');
-				window.location.href = 'http://localhost:5000/login'; // ✅ Redirect to Flask login
+				console.warn('❌ Not logged in, redirecting...');
+				window.location.href = 'http://localhost:5000/login';
 			}
 		} catch (error) {
-			console.error('❌ Error checking auth status:', error);
-		}
-
-		if (!sessionToken) {
-			console.error('❌ No session token found! User might not be logged in.');
-			alert('You are not logged in. Please log in first.');
-			return;
+			console.error('❌ Error fetching auth status:', error);
 		}
 
 		// ✅ Ensure only ONE WebSocket connection
-		socket = io('ws://localhost:5000', {
-			transports: ['websocket'], // ✅ Forces WebSocket-only mode
-			withCredentials: true, // ✅ Ensures cookies are sent if needed
-			reconnection: true, // ✅ Enable auto-reconnection
-			reconnectionAttempts: 10, // ✅ Try reconnecting 10 times before failing
-			reconnectionDelay: 2000 // ✅ Wait 2 seconds before retrying
+		socket = io('http://localhost:5000', {
+			transports: ['websocket', 'polling'], // ✅ Allow both WebSockets & Polling
+			withCredentials: true,
+			reconnection: true,
+			reconnectionAttempts: 10,
+			reconnectionDelay: 2000
 		});
-
-		// ✅ Make `socket` available globally in DevTools
-		(window as any).socket = socket;
 
 		// ✅ Handle WebSocket connection
 		socket.on('connect', () => {
-			console.log('✅ Connected to WebSocket! Using transport:', socket.io.engine.transport.name);
+			console.log('✅ Connected to WebSocket!');
 			isConnected = true;
 		});
 
-		// ✅ Log WebSocket transport type after every upgrade
-		socket.io.engine.on('upgrade', (transport) => {
-			console.log('🔄 WebSocket transport upgraded to:', transport.name);
-		});
-
 		socket.on('disconnect', () => {
-			console.warn('❌ WebSocket Disconnected! Attempting to reconnect...');
+			console.warn('❌ WebSocket Disconnected!');
 			isConnected = false;
 		});
 
-		socket.on('connect_error', (error) => {
-			console.error('WebSocket Connection Error:', error);
-			isConnected = false;
-		});
-
-		// ✅ Handle WebSocket responses from Flask
+		// ✅ Handle streaming responses
 		socket.on('chat_response', (data: { thread_id?: string; data: string }) => {
-			console.log('📩 WebSocket Response Received:', data); // ✅ Debugging log
+			console.log('📩 WebSocket Response:', data);
 
-			// ✅ Ensure `data.thread_id` exists before proceeding
+			// ✅ Ensure thread_id exists before proceeding
 			if (!data.thread_id) {
 				console.warn('❌ Warning: Missing thread_id in response!', data);
 				return;
@@ -96,21 +78,16 @@
 			}
 
 			// ✅ Ensure Svelte properly updates the UI state
-			messages = [...messages]; // 🔹 Force Svelte to re-render
-
-			// ✅ Check if last message was from AI → Append to it
-			if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
-				messages[messages.length - 1].content += data.data;
-			} else {
-				// ✅ If no AI message exists, add a new assistant response
-				messages = [...messages, { role: 'assistant', content: data.data }];
-			}
-
-			// ✅ Auto-scroll chat window
-			setTimeout(() => {
-				const chatWindow = document.querySelector('.messages');
-				if (chatWindow) chatWindow.scrollTop = chatWindow.scrollHeight;
-			}, 100);
+			messages.update((msgs) => {
+				// ✅ Append AI message if assistant already replied
+				if (msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') {
+					msgs[msgs.length - 1].content += data.data;
+				} else {
+					// ✅ Otherwise, add new assistant message
+					msgs.push({ role: 'assistant', content: data.data });
+				}
+				return [...msgs];
+			});
 		});
 	});
 
@@ -134,7 +111,7 @@
 		socket.emit('chat_message', messageData);
 
 		// ✅ Add user's message to UI immediately
-		messages = [...messages, { role: 'user', content: userInput }];
+		messages.update((msgs) => [...msgs, { role: 'user', content: userInput }]);
 		userInput = '';
 		loading = true;
 	}
@@ -147,7 +124,7 @@
 	<h2>💬 Linkbooks AI Desk</h2>
 
 	<div class="messages">
-		{#each messages as msg}
+		{#each $messages as msg}
 			<div class="message {msg.role}">
 				<strong>{msg.role === 'user' ? 'You' : msg.role === 'assistant' ? 'AI' : 'System'}:</strong>
 				<div class="message-content" data-message="true">
