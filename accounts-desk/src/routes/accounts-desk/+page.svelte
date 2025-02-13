@@ -45,19 +45,32 @@
 			return;
 		}
 
-		// ✅ Connect to WebSocket with credentials
-		socket = io('http://localhost:5000', { withCredentials: true });
+		// ✅ Ensure only ONE WebSocket connection
+		socket = io('ws://localhost:5000', {
+			transports: ['websocket'], // ✅ Forces WebSocket-only mode
+			withCredentials: true, // ✅ Ensures cookies are sent if needed
+			reconnection: true, // ✅ Enable auto-reconnection
+			reconnectionAttempts: 10, // ✅ Try reconnecting 10 times before failing
+			reconnectionDelay: 2000 // ✅ Wait 2 seconds before retrying
+		});
+
+		// ✅ Make `socket` available globally in DevTools
+		(window as any).socket = socket;
 
 		// ✅ Handle WebSocket connection
 		socket.on('connect', () => {
-			console.log('✅ Connected to WebSocket!');
+			console.log('✅ Connected to WebSocket! Using transport:', socket.io.engine.transport.name);
 			isConnected = true;
 		});
 
+		// ✅ Log WebSocket transport type after every upgrade
+		socket.io.engine.on('upgrade', (transport) => {
+			console.log('🔄 WebSocket transport upgraded to:', transport.name);
+		});
+
 		socket.on('disconnect', () => {
-			console.warn('❌ WebSocket Disconnected!');
+			console.warn('❌ WebSocket Disconnected! Attempting to reconnect...');
 			isConnected = false;
-			reconnectWebSocket(); // ✅ Auto-reconnect if disconnected
 		});
 
 		socket.on('connect_error', (error) => {
@@ -65,36 +78,31 @@
 			isConnected = false;
 		});
 
-		// ✅ Function to reconnect WebSocket if disconnected
-		function reconnectWebSocket() {
-			setTimeout(() => {
-				if (!isConnected) {
-					console.log('🔄 Reconnecting WebSocket...');
-					socket.connect();
-				}
-			}, 2000); // ✅ Wait 2 seconds before retrying
-		}
-
-		// ✅ Handle streaming responses
+		// ✅ Handle WebSocket responses from Flask
 		socket.on('chat_response', (data: { thread_id?: string; data: string }) => {
-			console.log('📩 WebSocket Response Received:', data);
+			console.log('📩 WebSocket Response Received:', data); // ✅ Debugging log
 
-			// ✅ Debugging log for thread_id
+			// ✅ Ensure `data.thread_id` exists before proceeding
 			if (!data.thread_id) {
-				console.warn('❌ Missing thread_id in response!', data);
+				console.warn('❌ Warning: Missing thread_id in response!', data);
 				return;
 			}
 
+			// ✅ Stop loading animation on "[DONE]"
 			if (data.data === '[DONE]') {
 				console.log('✅ AI Response Completed');
 				loading = false;
 				return;
 			}
 
-			// ✅ Append AI message to chat UI
+			// ✅ Ensure Svelte properly updates the UI state
+			messages = [...messages]; // 🔹 Force Svelte to re-render
+
+			// ✅ Check if last message was from AI → Append to it
 			if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
 				messages[messages.length - 1].content += data.data;
 			} else {
+				// ✅ If no AI message exists, add a new assistant response
 				messages = [...messages, { role: 'assistant', content: data.data }];
 			}
 

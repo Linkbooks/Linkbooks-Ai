@@ -194,7 +194,22 @@ if not app.secret_key:
     raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
 #------------Websocket Initialization-------------------#
-socketio = SocketIO(app, cors_allowed_origins="*")  # Adjust CORS as needed
+# ✅ Corrected WebSocket Initialization (Only One Instance)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=["http://localhost:5173"],  # ✅ Explicitly allow frontend
+    transports=["websocket"],  # ✅ Force WebSockets (no polling)
+    ping_interval=25,  # ✅ Helps keep connection alive
+    ping_timeout=60  # ✅ Prevents WebSocket from closing too soon
+)
+
+# --------------------------Enable CORS-----------------------------------------
+
+# ✅ Enable CORS for both HTTP requests and WebSockets
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:5173"}})
+
+# ------------------------------------------------------------------------------
+
 
 # ------------------------------------------------------------------------------
 # Limiter
@@ -203,11 +218,6 @@ limiter = Limiter(
     key_func=get_remote_address
 )
 limiter.init_app(app)
-
-# --------------------------Enable CORS-----------------------------------------
-# Enable CORS for frontend (Svelte) and allow credentials
-CORS(app, supports_credentials=True, origins="http://localhost:5173")  # Adjust for your frontend port
-# ------------------------------------------------------------------------------
 
 #-------------------------  Custom Jinja Filter  ------------------------------#
 @app.template_filter('datetimeformat')
@@ -2958,9 +2968,10 @@ def process_and_stream_response(user_id, user_message):
 
                     # ✅ Ensure `thread_id` is always sent
                     socketio.emit("chat_response", {
-                        "thread_id": thread_id,
-                        "data": chunk.data.delta.value
-                    })
+                        "thread_id": thread_id if thread_id else "UNKNOWN_THREAD",
+                        "data": chunk.data.delta.value if chunk.data.delta.value else "[NO DATA]"
+                }, namespace="/")
+
 
     except Exception as e:
         print(f"❌ [ERROR] Streaming error: {str(e)}", flush=True)
@@ -2987,6 +2998,15 @@ def on_connect():
 @socketio.on('disconnect')
 def on_disconnect():
     print("❌ Client disconnected", flush=True)
+    
+@socketio.on('test_message')
+def send_test_message():
+    print("✅ Sending test WebSocket message...", flush=True)
+    socketio.emit("chat_response", {
+        "thread_id": "test_thread",
+        "data": "This is a test message from Flask!"
+    })
+
 
 @socketio.on("chat_message")
 def handle_chat_message(data):
