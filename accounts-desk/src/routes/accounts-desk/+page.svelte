@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { io, Socket } from 'socket.io-client';
+	import Cookies from 'js-cookie'; // Install with: npm install js-cookie
 
 	interface Message {
 		role: string;
@@ -7,65 +9,131 @@
 	}
 
 	let messages: Message[] = [];
-	let userInput: string = '';
-	let loading: boolean = false;
+	let userInput = '';
+	let loading = false;
+	let socket: Socket;
+	let isConnected = false;
+	let sessionToken: string | null = null;
 
-	async function sendMessage() {
-		if (!userInput.trim()) return;
-
-		// ✅ Add user message to UI
-		messages = [...messages, { role: 'user', content: userInput }];
-		const input = userInput;
-		userInput = '';
-		loading = true;
+	onMount(async () => {
+		console.log('🔄 Checking authentication session...');
 
 		try {
-			const response = await fetch('/api/chat', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include',
-				body: JSON.stringify({ message: input })
+			// ✅ Fetch session token from Flask (DO NOT use js-cookie for HttpOnly cookies)
+			const response = await fetch('http://localhost:5000/auth/status', {
+				method: 'GET',
+				credentials: 'include' // ✅ Ensures cookies are sent
 			});
 
-			// ✅ Handle streaming response
-			if (!response.body) {
-				console.error("No response body");
+			const data = await response.json();
+
+			if (data.logged_in && data.session_token) {
+				console.log('✅ Storing correct session token:', data.session_token);
+				localStorage.setItem('session_token', data.session_token);
+				sessionToken = data.session_token;
+			} else {
+				console.warn('❌ Not logged in, redirecting to Flask login...');
+				window.location.href = 'http://localhost:5000/login'; // ✅ Redirect to Flask login
+			}
+		} catch (error) {
+			console.error('❌ Error checking auth status:', error);
+		}
+
+		if (!sessionToken) {
+			console.error('❌ No session token found! User might not be logged in.');
+			alert('You are not logged in. Please log in first.');
+			return;
+		}
+
+		// ✅ Connect to WebSocket with credentials
+		socket = io('http://localhost:5000', { withCredentials: true });
+
+		// ✅ Handle WebSocket connection
+		socket.on('connect', () => {
+			console.log('✅ Connected to WebSocket!');
+			isConnected = true;
+		});
+
+		socket.on('disconnect', () => {
+			console.warn('❌ WebSocket Disconnected!');
+			isConnected = false;
+			reconnectWebSocket(); // ✅ Auto-reconnect if disconnected
+		});
+
+		socket.on('connect_error', (error) => {
+			console.error('WebSocket Connection Error:', error);
+			isConnected = false;
+		});
+
+		// ✅ Function to reconnect WebSocket if disconnected
+		function reconnectWebSocket() {
+			setTimeout(() => {
+				if (!isConnected) {
+					console.log('🔄 Reconnecting WebSocket...');
+					socket.connect();
+				}
+			}, 2000); // ✅ Wait 2 seconds before retrying
+		}
+
+		// ✅ Handle streaming responses
+		socket.on('chat_response', (data: { thread_id?: string; data: string }) => {
+			console.log('📩 WebSocket Response Received:', data);
+
+			// ✅ Debugging log for thread_id
+			if (!data.thread_id) {
+				console.warn('❌ Missing thread_id in response!', data);
+				return;
+			}
+
+			if (data.data === '[DONE]') {
+				console.log('✅ AI Response Completed');
 				loading = false;
 				return;
 			}
 
-			const reader = response.body.getReader();
-			const decoder = new TextDecoder();
-			let assistantMessage = { role: 'assistant', content: "" };
-			messages = [...messages, assistantMessage];
-
-			let streamedResponse = "";
-
-			while (true) {
-				const { value, done } = await reader.read();
-				if (done) break;
-
-				streamedResponse += decoder.decode(value, { stream: true });
-
-				// ✅ Split streamed response into individual message chunks
-				const chunks = streamedResponse.split("\n\n");
-
-				// ✅ Extract last valid message chunk
-				const lastChunk = chunks[chunks.length - 2]; // Last complete message
-
-				if (lastChunk?.startsWith("data:")) {
-					const content = lastChunk.replace("data:", "").trim();
-					assistantMessage.content += content;
-					messages = [...messages]; // ✅ Force reactivity update
-				}
+			// ✅ Append AI message to chat UI
+			if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+				messages[messages.length - 1].content += data.data;
+			} else {
+				messages = [...messages, { role: 'assistant', content: data.data }];
 			}
-		} catch (error) {
-			console.error('Error:', error);
+
+			// ✅ Auto-scroll chat window
+			setTimeout(() => {
+				const chatWindow = document.querySelector('.messages');
+				if (chatWindow) chatWindow.scrollTop = chatWindow.scrollHeight;
+			}, 100);
+		});
+	});
+
+	function sendMessage() {
+		if (!userInput.trim()) return;
+
+		// ✅ Retrieve session token
+		const sessionToken = localStorage.getItem('session_token');
+
+		if (!sessionToken) {
+			alert('No session token found! Please log in.');
+			loading = false;
+			return;
 		}
 
-		loading = false;
+		const messageData = { session_token: sessionToken, message: userInput };
+
+		console.log('📤 Sending message:', messageData); // ✅ Debugging log
+
+		// ✅ Emit chat message with session token
+		socket.emit('chat_message', messageData);
+
+		// ✅ Add user's message to UI immediately
+		messages = [...messages, { role: 'user', content: userInput }];
+		userInput = '';
+		loading = true;
 	}
 </script>
+
+<!-- ✅ Show WebSocket Connection Status -->
+<p>WebSocket Status: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</p>
 
 <div class="chat-container">
 	<h2>💬 Linkbooks AI Desk</h2>
@@ -73,7 +141,7 @@
 	<div class="messages">
 		{#each messages as msg}
 			<div class="message {msg.role}">
-				<strong>{msg.role === 'user' ? 'You' : 'AI'}:</strong>
+				<strong>{msg.role === 'user' ? 'You' : msg.role === 'assistant' ? 'AI' : 'System'}:</strong>
 				<div class="message-content" data-message="true">
 					{@html msg.content}
 				</div>
@@ -91,7 +159,7 @@
 			}
 		}}
 	/>
-	<button on:click={sendMessage} disabled={loading}>Send</button>
+	<button on:click={sendMessage} disabled={loading || !isConnected}>Send</button>
 </div>
 
 <style>
@@ -178,8 +246,8 @@
 	:global(.message-content ol) {
 		padding-left: 22px;
 		margin: 4px 0;
-    	margin-top: -3px;
-    	margin-bottom: -12px;
+		margin-top: -3px;
+		margin-bottom: -12px;
 	}
 	:global(.message-content ul) {
 		list-style-type: disc;
@@ -190,49 +258,6 @@
 	:global(.message-content li) {
 		margin-bottom: -10px;
 		display: list-item;
-	}
-
-	/* Global Nested Lists */
-	:global(.message-content ul ul),
-	:global(.message-content ol ol) {
-		margin-top: 4px;
-		margin-bottom: 4px;
-		padding-left: 18px;
-	}
-
-	/* Global Inline Formatting */
-	:global(.message-content strong) {
-		font-weight: bold;
-	}
-	:global(.message-content em) {
-		font-style: italic;
-	}
-	:global(.message-content code) {
-		font-family: monospace;
-		background: #f4f4f4;
-		padding: 3px 5px;
-		border-radius: 4px;
-		font-size: 0.9em;
-	}
-
-	/* Global Block Code */
-	:global(.message-content pre) {
-		background: #272822;
-		color: #f8f8f2;
-		padding: 12px;
-		border-radius: 5px;
-		overflow-x: auto;
-		font-family: monospace;
-		font-size: 0.95em;
-	}
-
-	/* Global Links */
-	:global(.message-content a) {
-		color: #007bff;
-		text-decoration: none;
-	}
-	:global(.message-content a:hover) {
-		text-decoration: underline;
 	}
 
 	/* Inputs & Buttons */

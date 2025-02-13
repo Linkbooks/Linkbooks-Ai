@@ -3,13 +3,16 @@ import logging
 import requests
 import secrets
 import random
-import re, sys
+import re, sys, threading
+import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError
 import string
 import bcrypt
 import time
 import atexit
 from flask import render_template, redirect, request, Response, stream_with_context, make_response, url_for, jsonify, Flask, session
 from flask_mail import Mail, Message
+from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -18,7 +21,6 @@ from supabase.lib.client_options import ClientOptions
 from gotrue.errors import AuthApiError  # Correct import for error handling
 from bcrypt import checkpw
 from openai import OpenAI, AssistantEventHandler
-import jwt
 import stripe
 from functools import wraps
 from flask_limiter import Limiter
@@ -190,6 +192,9 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 if not app.secret_key:
     raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
+
+#------------Websocket Initialization-------------------#
+socketio = SocketIO(app, cors_allowed_origins="*")  # Adjust CORS as needed
 
 # ------------------------------------------------------------------------------
 # Limiter
@@ -1006,6 +1011,16 @@ def login():
         logging.error(f"Error during login: {e}", exc_info=True)
         error_message = "An unexpected error occurred during login. Please try again."
         return render_template('login.html', error_message=error_message), 500
+
+# -------------For svelte to check login status-----------------#
+@app.route("/auth/status", methods=["GET"])
+def check_auth_status():
+    session_token = request.cookies.get("session_token")
+
+    if not session_token:
+        return jsonify({"logged_in": False, "message": "No session token found"}), 401
+
+    return jsonify({"logged_in": True, "session_token": session_token})
 
 
 # ------------------------------------------
@@ -2868,17 +2883,16 @@ def analyze_reports():
         return {"error": str(e)}, 500
     
 # ------------------------------------------#
-#            Linkbooks AI Chat              #
+#            Chat Stuff                     #
 # ------------------------------------------#
-
-# ✅ Stream Handler Class
 class StreamHandler(AssistantEventHandler):
     """
-    Handles streaming AI responses.
+    Handles streaming AI responses via WebSockets.
     """
-    def __init__(self):
-        super().__init__()  # ✅ Properly initialize parent class
+    def __init__(self, thread_id):
+        super().__init__()
         self.response_text = ""
+        self.thread_id = thread_id  # Store thread ID to associate responses
 
     def on_text_created(self, text):
         print("\nAssistant:", end="", flush=True)
@@ -2888,6 +2902,9 @@ class StreamHandler(AssistantEventHandler):
             self.response_text += delta.value
             print(delta.value, end="", flush=True)
 
+            # 🔹 Send each chunk via WebSockets to the frontend
+            socketio.emit('chat_response', {'thread_id': self.thread_id, 'data': delta.value})
+
     def on_tool_call_created(self, tool_call):
         print(f"\nAssistant used tool: {tool_call.type}")
 
@@ -2896,90 +2913,116 @@ class StreamHandler(AssistantEventHandler):
             print(delta.code_interpreter.input, end="", flush=True)
 
     def get_response(self):
-        return self.response_text  # ✅ Allows generator to yield from this
+        return self.response_text
 
-# ✅ Function to handle streaming
-def generate(thread_id):
-    handler = StreamHandler()
-    print("🔄 [DEBUG] Streaming Started", flush=True)
 
-    # ✅ Ensure connection remains open by sending a "keep-alive" message first
-    yield ": keep-alive\n\n"
-    sys.stdout.flush()
+# ------------------------------------------#
+#     Process and Stream Response          #
+# ------------------------------------------#
+def process_and_stream_response(user_id, user_message):
+    print(f"🔄 Processing message for user {user_id}: {user_message}", flush=True)
 
-    with openai_client.beta.threads.runs.stream(
+    # ✅ Retrieve thread_id from Supabase
+    thread_query = supabase.table("user_threads").select("thread_id").eq("user_id", user_id).execute()
+    thread_id = thread_query.data[0]["thread_id"] if thread_query.data else None
+
+    if not thread_id:
+        print("🆕 Creating new chat thread...", flush=True)
+        thread = openai_client.beta.threads.create()
+        thread_id = thread.id
+        supabase.table("user_threads").insert({"user_id": user_id, "thread_id": thread_id}).execute()
+
+    print(f"🟢 Using thread_id: {thread_id} for user {user_id}", flush=True)
+
+    # ✅ Add user message to the thread
+    openai_client.beta.threads.messages.create(
         thread_id=thread_id,
-        assistant_id=ASSISTANT_ID,
-        event_handler=handler
-    ) as stream:
-        for chunk in stream:
-            if chunk.event == "text_delta":
-                output = f"data: {chunk.data.delta.value}\n\n"
-                print(f"📝 [DEBUG] Sending chunk: {output.strip()}", flush=True)
+        role="user",
+        content=user_message
+    )
 
-                yield output  # ✅ Yielding the response in small chunks
-                sys.stdout.flush()  # ✅ Force immediate streaming
+    print(f"📩 Chat message added to thread {thread_id}, streaming response...", flush=True)
 
-    print("✅ [DEBUG] Streaming Complete", flush=True)
+    # ✅ Stream response from OpenAI
+    handler = StreamHandler(thread_id)
 
-
-
-# ✅ Flask API Route for AI Chat
-@app.route('/chat', methods=['POST'])
-def chat_with_assistant():
     try:
-        print("📩 [DEBUG] Incoming request to /chat", flush=True)
+        with openai_client.beta.threads.runs.stream(
+            thread_id=thread_id,
+            assistant_id=ASSISTANT_ID,
+            event_handler=handler
+        ) as stream:
+            for chunk in stream:
+                if chunk.event == "text_delta":
+                    print(f"📡 Sending to WebSocket: {chunk.data.delta.value} (Thread: {thread_id})", flush=True)
 
-        # ✅ Get session token
-        session_token = request.cookies.get('session_token') or request.cookies.get('session')
-        if not session_token:
-            print("❌ [ERROR] No session token provided.", flush=True)
-            return jsonify({"error": "No session token provided."}), 401
-
-        # ✅ Decode user_id from session token
-        try:
-            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
-            user_id = decoded.get("user_id")
-        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-            print("❌ [ERROR] Invalid or expired session token.", flush=True)
-            return jsonify({"error": "Session token expired or invalid. Please log in again."}), 401
-
-        if not user_id:
-            print("❌ [ERROR] No user_id found in session token.", flush=True)
-            return jsonify({"error": "No user_id found. Please log in again."}), 401
-
-        print(f"✅ [DEBUG] Valid session token found for user: {user_id}", flush=True)
-
-        # ✅ Get or create a thread ID in Supabase
-        thread_query = supabase.table("user_threads").select("thread_id").eq("user_id", user_id).execute()
-        thread_id = thread_query.data[0]["thread_id"] if thread_query.data else None
-
-        if not thread_id:
-            thread = openai_client.beta.threads.create()
-            thread_id = thread.id
-            supabase.table("user_threads").insert({"user_id": user_id, "thread_id": thread_id}).execute()
-
-        print(f"✅ [DEBUG] Using thread_id: {thread_id}", flush=True)
-
-        # ✅ Fix: Use the correct `generate(thread_id)` function
-        response = Response(
-            stream_with_context(generate(thread_id)),  # ✅ Pass the correct thread_id
-            content_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no"  # ✅ Prevents buffering
-            }
-        )
-
-        # ✅ Debugging: Print response headers
-        print("📩 [DEBUG] Response Headers:", response.headers, flush=True)
-
-        return response  # ✅ Return a valid streaming response
+                    # ✅ Ensure `thread_id` is always sent
+                    socketio.emit("chat_response", {
+                        "thread_id": thread_id,
+                        "data": chunk.data.delta.value
+                    })
 
     except Exception as e:
-        print(f"❌ [ERROR] {str(e)}", flush=True)
-        return jsonify({"error": str(e)}), 500
+        print(f"❌ [ERROR] Streaming error: {str(e)}", flush=True)
+        socketio.emit("chat_response", {
+            "thread_id": thread_id,
+            "data": "[ERROR] An error occurred."
+        })
+    finally:
+        print(f"✅ WebSocket: Sent [DONE] (Thread: {thread_id})", flush=True)
+        socketio.emit("chat_response", {
+            "thread_id": thread_id,
+            "data": "[DONE]"
+        })
 
+
+# ------------------------------------------#
+#          Socket.IO Event Handlers          #
+# ------------------------------------------#
+@socketio.on('connect')
+def on_connect():
+    print("✅ Client connected", flush=True)
+    emit('chat_response', {'data': "Connected to WebSocket"})
+
+@socketio.on('disconnect')
+def on_disconnect():
+    print("❌ Client disconnected", flush=True)
+
+@socketio.on("chat_message")
+def handle_chat_message(data):
+    print("📩 Received WebSocket message:", data, flush=True)
+
+    session_token = data.get("session_token")
+    user_message = data.get("message")
+
+    if not session_token:
+        print("❌ No session token provided.")
+        emit("chat_response", {"data": "No session token provided."})
+        return
+
+    # ✅ Use globally defined SECRET_KEY instead of app.config
+    if not SECRET_KEY:
+        print("❌ SECRET_KEY is missing in WebSocket handler!")
+        emit("chat_response", {"data": "Server error: missing SECRET_KEY."})
+        return
+
+    try:
+        decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        user_id = decoded.get("user_id")
+    except (ExpiredSignatureError, InvalidTokenError) as e:
+        print(f"❌ Session token error: {str(e)}")
+        emit("chat_response", {"data": f"Session token error: {str(e)}"})
+        return
+
+    if not user_id:
+        print("❌ No user found in token")
+        emit("chat_response", {"data": "No user found in token"})
+        return
+
+    print(f"✅ Received chat message from user {user_id}: {user_message}", flush=True)
+
+    # ✅ Start processing and streaming the response
+    threading.Thread(target=process_and_stream_response, args=(user_id, user_message)).start()
 
 
 # ✅ Verify Assistant Configuration
@@ -3073,8 +3116,11 @@ def debug_env():
 def log_request_info():
     logging.info(f"📩 Incoming request: {request.method} {request.path}")
 
-if __name__ == '__main__':
-    app.run(debug=debug_mode)
+
+#---------- Start the Flask Server ----------#
 
 if os.getenv("FLASK_ENV") == "production":
     app.debug = False
+
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=5000, debug=app.debug)

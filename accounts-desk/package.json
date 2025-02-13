@@ -20,6 +20,7 @@
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/vite": "^4.0.0",
+		"@types/js-cookie": "^3.0.6",
 		"@types/markdown-it": "^14.1.2",
 		"@types/marked": "^5.0.2",
 		"eslint": "^9.18.0",
@@ -37,7 +38,9 @@
 		"vite": "^6.0.0"
 	},
 	"dependencies": {
+		"js-cookie": "^3.0.5",
 		"markdown-it": "^14.1.0",
-		"marked": "^15.0.7"
+		"marked": "^15.0.7",
+		"socket.io-client": "^4.8.1"
 	}
 }
