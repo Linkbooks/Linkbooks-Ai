@@ -2999,14 +2999,6 @@ def on_connect():
 @socketio.on('disconnect')
 def on_disconnect():
     print("❌ Client disconnected", flush=True)
-    
-@socketio.on('test_message')
-def send_test_message():
-    print("✅ Sending test WebSocket message...", flush=True)
-    socketio.emit("chat_response", {
-        "thread_id": "test_thread",
-        "data": "This is a test message from Flask!"
-    })
 
 
 @socketio.on('chat_message')

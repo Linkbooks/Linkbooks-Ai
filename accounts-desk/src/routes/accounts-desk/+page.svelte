@@ -16,6 +16,22 @@
 	let socket: Socket;
 	let isConnected = false;
 	let sessionToken: string | null = null;
+	let chatContainer: HTMLDivElement | null = null;
+
+	// ✅ Auto-scroll function
+	function autoScroll() {
+		setTimeout(() => {
+			if (chatContainer) {
+				chatContainer.scrollTop = chatContainer.scrollHeight;
+			}
+		}, 100);
+	}
+
+	// ✅ Watch for message updates & auto-scroll
+	$: {
+		$messages;
+		autoScroll();
+	}
 
 	onMount(async () => {
 		console.log('🔄 Checking authentication session...');
@@ -103,17 +119,19 @@
 			return;
 		}
 
-		const messageData = { session_token: sessionToken, message: userInput };
-
-		console.log('📤 Sending message:', messageData); // ✅ Debugging log
-
-		// ✅ Emit chat message with session token
-		socket.emit('chat_message', messageData);
-
-		// ✅ Add user's message to UI immediately
+		// ✅ Store the message in UI immediately
 		messages.update((msgs) => [...msgs, { role: 'user', content: userInput }]);
-		userInput = '';
+
+		// ✅ Save user input before clearing
+		const messageText = userInput;
+		userInput = ''; // ✅ Clear input field immediately
 		loading = true;
+
+		// ✅ Send message to backend via WebSocket
+		socket.emit('chat_message', { session_token: sessionToken, message: messageText });
+
+		// ✅ Force auto-scroll to latest message
+		autoScroll();
 	}
 </script>
 
@@ -123,7 +141,7 @@
 <div class="chat-container">
 	<h2>💬 Linkbooks AI Desk</h2>
 
-	<div class="messages">
+	<div class="messages" bind:this={chatContainer}>
 		{#each $messages as msg}
 			<div class="message {msg.role}">
 				<strong>{msg.role === 'user' ? 'You' : msg.role === 'assistant' ? 'AI' : 'System'}:</strong>
