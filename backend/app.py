@@ -1062,8 +1062,9 @@ def login():
             "session_token",
             token,
             httponly=True,
-            secure=secure_cookie,
-            samesite='Lax',
+            secure=secure_cookie,  # ✅ Required for cross-domain cookies
+            samesite="None",  # ✅ Allows sharing across different subdomains
+            domain=".linkbooksai.com"  # ✅ Makes the cookie work across all subdomains
         )
         logging.info(f"Session token set for user ID: {user_id}")
         return resp
