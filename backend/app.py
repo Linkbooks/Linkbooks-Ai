@@ -224,21 +224,25 @@ print(f"✅ Using CORS Origin: {ACTIVE_CORS_ORIGIN}")  # Debugging log
 CORS(  
     app,  
     supports_credentials=True,  # ✅ Allow cookies & auth headers  
-    origins=[ACTIVE_CORS_ORIGIN],  # ✅ Uses local or production origin dynamically  
+    origins=["https://linkbooksai.com", "https://app.linkbooksai.com"],
     methods=["GET", "POST", "OPTIONS"],  # ✅ Restrict allowed HTTP methods  
     allow_headers=["Content-Type", "Authorization"],  # ✅ Allow required headers  
 )  
+
+print("✅ CORS Configured for:", ["https://linkbooksai.com", "https://app.linkbooksai.com"])
 
 # ---------- Initialize the Websocket SocketIO instance ----------#
 
 # ✅ Dynamically Set CORS Allowed Origins
 socketio = SocketIO(
     app,
-    cors_allowed_origins=[ACTIVE_CORS_ORIGIN],  # Uses the correct origin dynamically
+    cors_allowed_origins=["https://linkbooksai.com", "https://app.linkbooksai.com"],  # ✅ Allow both domains
     transports=["websocket"],  # ✅ Force WebSockets (no polling)
     ping_interval=25,  # ✅ Helps keep connection alive
     ping_timeout=60  # ✅ Prevents WebSocket from closing too soon
 )
+
+print("✅ WebSockets Configured for:", ["https://linkbooksai.com", "https://app.linkbooksai.com"])
 
 # ------------------------------------------------------------------------------
 

@@ -6,7 +6,7 @@
 	import DOMPurify from 'dompurify';
 
 	// ✅ Determine backend URL based on environment
-	const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+	const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || "https://app.linkbooksai.com";
 	console.log('🔄 Backend URL:', BACKEND_URL);
 
 
