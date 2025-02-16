@@ -206,11 +206,11 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY')
 if not app.secret_key:
     raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
+
 #------------Websocket Initialization-------------------#
 
 # Enable CORS
 
-# ✅ Enable CORS for both HTTP requests and WebSockets
 # Get the correct CORS origin based on environment
 CORS_ORIGIN = os.getenv("CORS_ORIGIN", "https://linkbooksai.com")  # Production URL
 CORS_ORIGIN_LOCAL = os.getenv("CORS_ORIGIN_LOCAL", "http://localhost:5173")  # Local Dev URL
@@ -219,6 +219,15 @@ CORS_ORIGIN_LOCAL = os.getenv("CORS_ORIGIN_LOCAL", "http://localhost:5173")  # L
 ACTIVE_CORS_ORIGIN = CORS_ORIGIN_LOCAL if os.getenv("FLASK_ENV") == "development" else CORS_ORIGIN
 
 print(f"✅ Using CORS Origin: {ACTIVE_CORS_ORIGIN}")  # Debugging log
+
+# ✅ Enable CORS for HTTP Requests  
+CORS(  
+    app,  
+    supports_credentials=True,  # ✅ Allow cookies & auth headers  
+    origins=[ACTIVE_CORS_ORIGIN],  # ✅ Uses local or production origin dynamically  
+    methods=["GET", "POST", "OPTIONS"],  # ✅ Restrict allowed HTTP methods  
+    allow_headers=["Content-Type", "Authorization"],  # ✅ Allow required headers  
+)  
 
 # ---------- Initialize the Websocket SocketIO instance ----------#
 

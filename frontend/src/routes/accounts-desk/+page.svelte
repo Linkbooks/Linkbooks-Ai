@@ -82,7 +82,8 @@
 			withCredentials: true,
 			reconnection: true,
 			reconnectionAttempts: 10,
-			reconnectionDelay: 2000
+			reconnectionDelay: 2000,
+			auth: { session_token: localStorage.getItem("session_token") } // ✅ Send token in WebSocket auth
 		});
 
 		// ✅ Handle WebSocket connection
