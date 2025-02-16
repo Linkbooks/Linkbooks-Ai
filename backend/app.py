@@ -5,7 +5,7 @@ import secrets
 import random
 import re, sys, threading
 import jwt
-from jwt import ExpiredSignatureError, InvalidTokenError
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 import string
 import bcrypt
 import time
@@ -2532,6 +2532,9 @@ def filter_transactions():
     try:
         data = request.json
         query = data.get("query")
+        user_id = data.get("user_id")
+        start_date = data.get("start_date")
+        end_date = data.get("end_date")
         transactions = get_qb_transactions_raw(user_id, start_date, end_date)
 
         # Determine complexity

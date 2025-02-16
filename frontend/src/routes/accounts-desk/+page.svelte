@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { io, Socket } from 'socket.io-client';
 	import { writable } from 'svelte/store';
+	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 
 	// ✅ Define message structure
 	interface Message {
@@ -31,6 +33,18 @@
 	$: {
 		$messages;
 		autoScroll();
+	}
+
+	// ✅ Function to convert Markdown to HTML
+	function renderMarkdown(content: string): string {
+		// Ensure `marked.parse()` is treated as synchronous
+		const parsed = marked.parse(content) as string;
+		let sanitized = DOMPurify.sanitize(parsed);
+
+		// Insert a line break for <strong> with a colon
+		sanitized = sanitized.replace(/(<strong>[^<]*?):([^<]*?<\/strong>)/g, '$1:</strong><br>$2');
+
+		return sanitized;
 	}
 
 	onMount(async () => {
@@ -93,7 +107,7 @@
 				return;
 			}
 
-			// ✅ Ensure Svelte properly updates the UI state
+			// ✅ Update messages store
 			messages.update((msgs) => {
 				// ✅ Append AI message if assistant already replied
 				if (msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') {
@@ -146,10 +160,22 @@
 			<div class="message {msg.role}">
 				<strong>{msg.role === 'user' ? 'You' : msg.role === 'assistant' ? 'AI' : 'System'}:</strong>
 				<div class="message-content" data-message="true">
-					{@html msg.content}
+					{@html renderMarkdown(msg.content)}
+					<!-- ✅ Render Markdown -->
 				</div>
 			</div>
 		{/each}
+		
+		{#if loading && (!$messages.length || $messages[$messages.length - 1].role !== 'assistant')}
+			<div class="message assistant">
+				<strong>AI:</strong>
+				<div class="message-content loading">
+					<span class="dot">.</span>
+					<span class="dot">.</span>
+					<span class="dot">.</span>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<input
@@ -167,7 +193,7 @@
 
 <style>
 	.chat-container {
-		max-width: 600px;
+		max-width: 750px;
 		margin: auto;
 		padding: 20px;
 		font-family: Arial, sans-serif;
@@ -185,14 +211,14 @@
 	.message {
 		padding: 10px;
 		border-radius: 8px;
-		margin-bottom: 8px;
-		white-space: pre-wrap;
+		margin-bottom: 10px !important;
+		white-space: normal;
 		line-height: 1.4;
 	}
 
 	/* User & Assistant Message Styling */
 	.user {
-		background: #007bff;
+		background: #468763;
 		color: white;
 		text-align: right;
 		border-radius: 15px 15px 0 15px;
@@ -204,12 +230,47 @@
 	}
 
 	/* Styling for Converted Markdown */
+
+	/* ✅ Remove bottom margin from all block elements inside .message-content */
+	:global(.message-content > *:last-child) {
+		margin-bottom: 0 !important;
+		padding-bottom: 0 !important;
+	}
+
 	:global(.message-content) {
 		display: block;
 		width: 100%;
 		overflow-wrap: break-word;
 		line-height: 1.55;
 		padding: 6px 0;
+		margin-bottom: 0 !important;
+		padding-bottom: 0 !important;
+	}
+
+	:global(.message-content code) {
+		font-family: monospace;
+		background: #f4f4f4;
+		padding: 3px 5px;
+		border-radius: 4px;
+		font-size: 0.9em;
+	}
+
+	:global(.message-content pre) {
+		background: #272822;
+		color: #f8f8f2;
+		padding: 12px;
+		border-radius: 5px;
+		overflow-x: auto;
+		font-family: monospace;
+		font-size: 0.95em;
+		margin-bottom: 0 !important; /* 🔹 Fix gap */
+		padding-bottom: 0 !important; /* 🔹 Remove extra padding */
+	}
+
+	/* ✅ Ensure <p> tags inside Markdown do not add bottom margin */
+	:global(.message-content p:last-child) {
+		margin-bottom: 0 !important;
+		padding-bottom: 0 !important;
 	}
 
 	/* Global Header Styling */
@@ -228,8 +289,8 @@
 	:global(.message-content h3) {
 		font-size: 1.3em;
 		font-weight: bold;
-		margin-top: 4px;
-		margin-bottom: -24px;
+		margin-top: 15px;
+		margin-bottom: 10px;
 		color: #333;
 	}
 	:global(.message-content h1:first-child),
@@ -249,8 +310,8 @@
 	:global(.message-content ol) {
 		padding-left: 22px;
 		margin: 4px 0;
-		margin-top: -3px;
-		margin-bottom: -12px;
+		margin-top: 4px;
+		margin-bottom: 4px;
 	}
 	:global(.message-content ul) {
 		list-style-type: disc;
@@ -259,7 +320,7 @@
 		list-style-type: decimal;
 	}
 	:global(.message-content li) {
-		margin-bottom: -10px;
+		margin-bottom: 4px;
 		display: list-item;
 	}
 
@@ -273,12 +334,46 @@
 		border-radius: 5px;
 	}
 	button {
-		background: #007bff;
+		background: #468763;
 		color: white;
 		cursor: pointer;
 	}
 	button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	/* Loading Animation */
+	.loading {
+		display: flex !important;
+		gap: 4px;
+		align-items: center;
+		height: 24px;
+	}
+
+	.dot {
+		animation: pulse 1.5s infinite;
+		opacity: 0.5;
+		font-size: 20px;
+		line-height: 20px;
+	}
+
+	.dot:nth-child(2) {
+		animation-delay: 0.5s;
+	}
+
+	.dot:nth-child(3) {
+		animation-delay: 1s;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 0.3;
+			transform: translateY(0);
+		}
+		50% {
+			opacity: 1;
+			transform: translateY(-2px); /* Reduced from -4px to -2px */
+		}
 	}
 </style>

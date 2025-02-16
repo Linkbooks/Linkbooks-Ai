@@ -38,6 +38,7 @@
 		"vite": "^6.0.0"
 	},
 	"dependencies": {
+		"dompurify": "^3.2.4",
 		"js-cookie": "^3.0.5",
 		"markdown-it": "^14.1.0",
 		"marked": "^15.0.7",
