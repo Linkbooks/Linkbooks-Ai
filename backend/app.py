@@ -212,8 +212,8 @@ if not app.secret_key:
 
 # ✅ Enable CORS for both HTTP requests and WebSockets
 # Get the correct CORS origin based on environment
-CORS_ORIGIN = os.getenv("CORS_ORIGIN")  # Production URL
-CORS_ORIGIN_LOCAL = os.getenv("CORS_ORIGIN_LOCAL")  # Local Dev URL
+CORS_ORIGIN = os.getenv("CORS_ORIGIN", "https://linkbooksai.com")  # Production URL
+CORS_ORIGIN_LOCAL = os.getenv("CORS_ORIGIN_LOCAL", "http://localhost:5173")  # Local Dev URL
 
 # Determine active CORS origin
 ACTIVE_CORS_ORIGIN = CORS_ORIGIN_LOCAL if os.getenv("FLASK_ENV") == "development" else CORS_ORIGIN
