@@ -192,7 +192,7 @@ atexit.register(lambda: scheduler.shutdown())
 # ✅ Initialize Flask app
 app = Flask(
     __name__,
-    static_folder="../frontend/.svelte-kit/output",  # ✅ Svelte static files
+    static_folder="../frontend/.svelte-kit/output/client",  # ✅ Svelte static files
     static_url_path="/",  
     template_folder="templates"
 )
