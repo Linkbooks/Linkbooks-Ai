@@ -5,6 +5,10 @@
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 
+	// ✅ Determine backend URL based on environment
+	const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+	console.log('🔄 Backend URL:', BACKEND_URL);
+
 	// ✅ Define message structure
 	interface Message {
 		role: string;
@@ -51,9 +55,9 @@
 		console.log('🔄 Checking authentication session...');
 
 		try {
-			const response = await fetch('http://localhost:5000/auth/status', {
+			const response = await fetch(`${BACKEND_URL}/auth/status`, {
 				method: 'GET',
-				credentials: 'include' // ✅ Ensures cookies are sent
+				credentials: 'include'
 			});
 
 			const data = await response.json();
@@ -64,15 +68,15 @@
 				sessionToken = data.session_token;
 			} else {
 				console.warn('❌ Not logged in, redirecting...');
-				window.location.href = 'http://localhost:5000/login';
+				window.location.href = `${BACKEND_URL}/login`;
 			}
 		} catch (error) {
 			console.error('❌ Error fetching auth status:', error);
 		}
 
-		// ✅ Ensure only ONE WebSocket connection
-		socket = io('http://localhost:5000', {
-			transports: ['websocket', 'polling'], // ✅ Allow both WebSockets & Polling
+		// ✅ Initialize WebSocket with correct backend URL
+		socket = io(BACKEND_URL, {
+			transports: ['websocket', 'polling'],
 			withCredentials: true,
 			reconnection: true,
 			reconnectionAttempts: 10,
@@ -165,7 +169,7 @@
 				</div>
 			</div>
 		{/each}
-		
+
 		{#if loading && (!$messages.length || $messages[$messages.length - 1].role !== 'assistant')}
 			<div class="message assistant">
 				<strong>AI:</strong>
@@ -367,7 +371,8 @@
 	}
 
 	@keyframes pulse {
-		0%, 100% {
+		0%,
+		100% {
 			opacity: 0.3;
 			transform: translateY(0);
 		}

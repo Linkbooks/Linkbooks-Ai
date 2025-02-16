@@ -195,19 +195,29 @@ if not app.secret_key:
     raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
 #------------Websocket Initialization-------------------#
-# ✅ Corrected WebSocket Initialization (Only One Instance)
+
+# Enable CORS
+
+# ✅ Enable CORS for both HTTP requests and WebSockets
+# Get the correct CORS origin based on environment
+CORS_ORIGIN = os.getenv("CORS_ORIGIN")  # Production URL
+CORS_ORIGIN_LOCAL = os.getenv("CORS_ORIGIN_LOCAL")  # Local Dev URL
+
+# Determine active CORS origin
+ACTIVE_CORS_ORIGIN = CORS_ORIGIN_LOCAL if os.getenv("FLASK_ENV") == "development" else CORS_ORIGIN
+
+print(f"✅ Using CORS Origin: {ACTIVE_CORS_ORIGIN}")  # Debugging log
+
+# ---------- Initialize the Websocket SocketIO instance ----------#
+
+# ✅ Dynamically Set CORS Allowed Origins
 socketio = SocketIO(
     app,
-    cors_allowed_origins=["http://localhost:5173"],  # ✅ Explicitly allow frontend
+    cors_allowed_origins=[ACTIVE_CORS_ORIGIN],  # Uses the correct origin dynamically
     transports=["websocket"],  # ✅ Force WebSockets (no polling)
     ping_interval=25,  # ✅ Helps keep connection alive
     ping_timeout=60  # ✅ Prevents WebSocket from closing too soon
 )
-
-# --------------------------Enable CORS-----------------------------------------
-
-# ✅ Enable CORS for both HTTP requests and WebSockets
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 # ------------------------------------------------------------------------------
 

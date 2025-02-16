@@ -3,6 +3,9 @@ import type { RequestHandler } from '@sveltejs/kit';
 
 // src/routes/api/chat/+server.ts
 
+// ✅ Environment-based Backend URL
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+
 // Helper function to convert a Node stream to a Web ReadableStream
 function nodeStreamToWebStream(nodeStream: any): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -25,7 +28,9 @@ export const POST: RequestHandler = async ({ request }) => {
     const { message } = await request.json();
     const cookie = request.headers.get("cookie") || "";
 
-    const response = await fetch("http://localhost:5000/chat", {
+    console.log(`🔄 Sending request to ${BACKEND_URL}/chat`);
+
+    const response = await fetch(`${BACKEND_URL}/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -54,7 +59,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return new Response(stream, {
       headers: { "Content-Type": "text/event-stream" }
     });
-    
+
   } catch (error: any) {
     console.error("❌ Error in API:", error);
     return new Response(
