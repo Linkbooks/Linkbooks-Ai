@@ -5,7 +5,7 @@ import secrets
 import random
 import re, sys, threading
 import jwt
-from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+from jwt import ExpiredSignatureError, InvalidTokenError
 import string
 import bcrypt
 import time
