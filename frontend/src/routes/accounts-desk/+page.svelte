@@ -6,10 +6,8 @@
 	import DOMPurify from 'dompurify';
 
 	// ✅ Determine backend URL based on environment
-	const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || "https://app.linkbooksai.com";
+	const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || 'https://app.linkbooksai.com';
 	console.log('🔄 Backend URL:', BACKEND_URL);
-
-
 
 	// ✅ Define message structure
 	interface Message {
@@ -59,7 +57,10 @@
 		try {
 			const response = await fetch(`${BACKEND_URL}/auth/status`, {
 				method: 'GET',
-				credentials: 'include'
+				credentials: 'include', // ✅ Ensures cookies are sent
+				headers: {
+					'Content-Type': 'application/json'
+				}
 			});
 
 			const data = await response.json();
@@ -83,7 +84,7 @@
 			reconnection: true,
 			reconnectionAttempts: 10,
 			reconnectionDelay: 2000,
-			auth: { session_token: localStorage.getItem("session_token") } // ✅ Send token in WebSocket auth
+			auth: { session_token: localStorage.getItem('session_token') } // ✅ Send token in WebSocket auth
 		});
 
 		// ✅ Handle WebSocket connection

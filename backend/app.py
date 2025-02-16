@@ -227,6 +227,7 @@ CORS(
     origins=["https://linkbooksai.com", "https://app.linkbooksai.com"],
     methods=["GET", "POST", "OPTIONS"],  # ✅ Restrict allowed HTTP methods  
     allow_headers=["Content-Type", "Authorization"],  # ✅ Allow required headers  
+    expose_headers=["Set-Cookie"]  # ✅ Allows cookies in responses
 )  
 
 print("✅ CORS Configured for:", ["https://linkbooksai.com", "https://app.linkbooksai.com"])
