@@ -6,8 +6,10 @@
 	import DOMPurify from 'dompurify';
 
 	// ✅ Determine backend URL based on environment
-	const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+	const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 	console.log('🔄 Backend URL:', BACKEND_URL);
+
+
 
 	// ✅ Define message structure
 	interface Message {
