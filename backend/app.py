@@ -206,6 +206,14 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY')
 if not app.secret_key:
     raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
+# ✅ Add cookie configuration here
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE='None',
+    SESSION_COOKIE_DOMAIN='.linkbooksai.com',
+    SESSION_COOKIE_HTTPONLY=True
+)
+
 
 #------------Websocket Initialization-------------------#
 
@@ -221,13 +229,14 @@ ACTIVE_CORS_ORIGIN = CORS_ORIGIN_LOCAL if os.getenv("FLASK_ENV") == "development
 print(f"✅ Using CORS Origin: {ACTIVE_CORS_ORIGIN}")  # Debugging log
 
 # ✅ Enable CORS for HTTP Requests  
-CORS(  
+CORS(
     app,  
     supports_credentials=True,  # ✅ Allow cookies & auth headers  
     origins=["https://linkbooksai.com", "https://app.linkbooksai.com"],
     methods=["GET", "POST", "OPTIONS"],  # ✅ Restrict allowed HTTP methods  
     allow_headers=["Content-Type", "Authorization"],  # ✅ Allow required headers  
-    expose_headers=["Set-Cookie"]  # ✅ Allows cookies in responses
+    expose_headers=["Set-Cookie"],  # ✅ Allows cookies in responses
+    credentials=True
 )  
 
 print("✅ CORS Configured for:", ["https://linkbooksai.com", "https://app.linkbooksai.com"])
