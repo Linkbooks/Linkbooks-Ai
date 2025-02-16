@@ -11,7 +11,7 @@ import bcrypt
 import time
 import atexit
 import eventlet
-from flask import render_template, redirect, request, Response, stream_with_context, make_response, url_for, jsonify, Flask, session
+from flask import render_template, redirect, request, Response, stream_with_context, make_response, url_for, jsonify, Flask, session, send_from_directory
 from flask_mail import Mail, Message
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -189,7 +189,10 @@ atexit.register(lambda: scheduler.shutdown())
 # ------------------------------------------------------------------------------
 # Flask app initialization
 # ------------------------------------------------------------------------------
-app = Flask(__name__)
+# ✅ Initialize Flask app
+app = Flask(__name__, static_folder="../frontend/build", static_url_path="/", template_folder="templates")
+
+# ✅ Set secret key for security (session management, CSRF protection, etc.)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 if not app.secret_key:
     raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
@@ -934,11 +937,15 @@ def fetch_transactions(user_id: str, qb_params: dict) -> dict:
 
 
 # ------------------------------------------------------------------------------
-# Flask Routes
+# Routes
 # ------------------------------------------------------------------------------
-@app.route('/')
-def index():
-    return render_template('index.html')
+# ✅ Serve Svelte frontend files
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path):
+    if path and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, "index.html")
 
 # ------------------------------------------
 # Login Route
