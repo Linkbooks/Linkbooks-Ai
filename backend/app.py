@@ -190,7 +190,16 @@ atexit.register(lambda: scheduler.shutdown())
 # Flask app initialization
 # ------------------------------------------------------------------------------
 # ✅ Initialize Flask app
-app = Flask(__name__, static_folder="../frontend/.svelte-kit/output", static_url_path="/", template_folder="templates")
+app = Flask(
+    __name__,
+    static_folder="../frontend/.svelte-kit/output",  # ✅ Svelte static files
+    static_url_path="/",  
+    template_folder="templates"
+)
+
+# ✅ Serve Flask's static files separately
+app.static_folder = "static"  # ✅ Ensures Flask still serves /backend/static
+
 
 # ✅ Set secret key for security (session management, CSRF protection, etc.)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
