@@ -4,7 +4,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 // src/routes/api/chat/+server.ts
 
 // ✅ Environment-based Backend URL
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
 // Helper function to convert a Node stream to a Web ReadableStream
 function nodeStreamToWebStream(nodeStream: any): ReadableStream<Uint8Array> {
