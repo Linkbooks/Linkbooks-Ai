@@ -1079,7 +1079,7 @@ def login():
             "session_token",
             token,
             httponly=True,
-            secure=True
+            secure=True, # ✅ Ensures the cookie is sent only over HTTPS
             samesite="None",  # ✅ Allows sharing across different subdomains
             domain=".linkbooksai.com"  # ✅ Makes the cookie work across all subdomains
         )
