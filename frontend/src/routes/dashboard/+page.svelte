@@ -143,6 +143,7 @@
 	.dashboard-container {
 		max-width: 690px;
 		margin: auto;
+		margin-top: 20px;
 		padding: 20px;
 		text-align: center;
 	}

@@ -1,0 +1,342 @@
+@import 'tailwindcss';
+
+/*----------------------------------------------------------
+   Global Reset for different browser compatibility 
+-----------------------------------------------------------*/
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
+    margin: 0;
+    padding: 0;
+}
+
+ul,
+ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+
+/* General Flexbox Layout */
+body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    /* Ensures footer stays at the bottom */
+    min-height: 100vh;
+    /* Full viewport height */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #333;
+    background: linear-gradient(180deg, #f6f8fc, #eceff3);
+    /* Subtle gradient */
+    line-height: 1.5;
+    /* Improved readability */
+}
+
+main {
+    flex-grow: 1; /* ✅ Forces content to expand and push footer down */
+}
+
+
+html {
+    scroll-behavior: smooth;
+    /* Smooth scrolling */
+}
+
+/*--------------------------------------------------------------
+   Global html rules
+---------------------------------------------------------------*/
+
+/* ✅ This ensures underlines only apply to content links */
+main a {
+    text-decoration: underline;
+}
+
+/* ✅ Remove underline from navigation and dropdown links */
+nav a,
+.dropdown-menu a,
+header a {
+    text-decoration: none;
+}
+
+
+/* Specific styling for header images to override global img display */
+header img {
+    display: inline-block;
+    /* Override global block display */
+    margin: 0 auto;
+    /* Center the image */
+}
+
+
+/* -------------------------------------------------------------
+   HEADER STYLING (MAIN, GENERIC)
+------------------------------------------------------------- */
+header {
+    text-align: center;
+    margin-top: 20px;
+    padding-bottom: 0;
+    box-shadow: none;
+    background: none;
+}
+
+/* Remove the .logo styling */
+h1 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-size: 2.5rem;
+    font-weight: 600;
+}
+
+
+header p {
+    font-size: 1.2rem;
+    color: #555;
+    margin-bottom: -5px;
+}
+
+.page-header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding-top: 20px;
+}
+
+.center-logo {
+    max-width: 100px;  /* Match the new logo size */
+    margin: 0 auto 15px;
+    display: block;
+}
+
+/* Adjust logo sizing */
+.logo {
+    max-width: 100px;  /* Reduced from previous size */
+    height: auto;
+    margin: 10px auto;
+}
+
+/* ----------------------------------------------------------
+                 DASHBOARD PAGE STYLING 
+-----------------------------------------------------------*/
+
+.dashboard-container {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    width: 90%;
+    min-width: 600px;
+    margin-top: -10px;
+    margin-bottom: 10px;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-container h2 {
+    font-size: 2rem;  /* Makes the text significantly larger */
+    padding-bottom: 20px;  /* Adds space below the header */
+    color: #333;  /* Optional: Darkens the text color for better readability */
+    font-weight: 600;  /* Optional: Makes the text slightly bolder */
+}
+
+
+/* CUSTOM DASHBOARD ELEMENT STYLES */
+
+.quickbooks-login-button {
+    padding: 10px 20px;
+    margin-top: 20px;
+}
+
+.quickbooks-login-prompt {
+    margin: 10px;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.status-container {
+    text-align: center;
+    margin-bottom: 20px;
+    margin-top: 13px;
+    max-width: 390px;
+    padding: 20px;
+    background: #f9fafb;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.status-container h3 {
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: #333;
+}
+
+.status-container p {
+    font-size: 1.1rem;
+    margin: 5px 0;
+    color: #555;
+}
+
+#response-container {
+    text-align: center;
+    margin-top: 20px;
+}
+
+#response-container button {
+    margin: 5px;
+    padding: 10px 20px;
+    font-size: 0.9rem;
+    color: white;
+    background: linear-gradient(90deg, #42AC68, #024822);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+#modal {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%; /* Updated for smaller screens */
+    max-width: 500px;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+}
+
+#modal-content pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.9rem;
+    color: #444;
+}
+
+#modal button {
+    margin-top: 10px;
+    padding: 10px 20px;
+    background: #27661a;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#what-else-modal {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%; /* Updated for smaller screens */
+    max-width: 500px;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+}
+
+#what-else-modal-content {
+    font-size: 1rem;
+    color: #444;
+}
+
+#what-else-modal button {
+    margin-top: 10px;
+    padding: 10px 20px;
+    background: #468763;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+
+/*-------------------------------------------------------------
+   GLOBAL FOOTER STYLING
+-------------------------------------------------------------*/
+.site-footer {
+    background-color: #f8f9fa;
+    padding: 20px 0;
+    border-top: 1px solid #e9ecef;
+    margin-top: 40px;
+}
+
+.site-footer .footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.site-footer p {
+    margin-bottom: 15px;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.site-footer .footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+.site-footer .footer-links a {
+    color: #42AC68;
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: color 0.3s ease;
+}
+
+.site-footer .footer-links a:hover {
+    color: #2c8f4f;
+    text-decoration: underline;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .site-footer .footer-links {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+}
+
+/* -------------------------------------------------------------
+   ERROR SECTION
+------------------------------------------------------------- */
+.error-section p.error-message {
+    padding: 15px;
+    background: #ffe6e6;
+    border: 1px solid #ffcccc;
+    border-radius: 8px;
+    color: red;
+    font-weight: bold;
+}
