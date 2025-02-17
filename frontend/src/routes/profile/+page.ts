@@ -2,6 +2,7 @@ import type { PageLoad } from './$types';
 
 const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
+/* Load the user profile */
 export const load: PageLoad = async ({ fetch }) => {
     console.log('Loading user profile...');
     try {
@@ -31,3 +32,4 @@ export const load: PageLoad = async ({ fetch }) => {
     
 };
 
+ 
