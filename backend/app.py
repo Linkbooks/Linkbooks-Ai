@@ -229,33 +229,43 @@ CORS_ORIGIN_LOCAL = os.getenv("CORS_ORIGIN_LOCAL", "http://localhost:5173")  # L
 # Determine active CORS origin
 ACTIVE_CORS_ORIGIN = CORS_ORIGIN_LOCAL if os.getenv("FLASK_ENV") == "development" else CORS_ORIGIN
 
+# ✅ CORS Configurations
+ALLOWED_CORS_ORIGINS = [
+    "https://linkbooksai.com",
+    "https://app.linkbooksai.com"
+]
+
+# ✅ Include localhost only in development mode
+if os.getenv("FLASK_ENV") == "development":
+    ALLOWED_CORS_ORIGINS.append("http://localhost:5173")
+
 print(f"✅ Using CORS Origin: {ACTIVE_CORS_ORIGIN}")  # Debugging log
 
 # ✅ Enable CORS for HTTP Requests  
 CORS(
     app,  
     supports_credentials=True,  # ✅ Allow cookies & auth headers  
-    origins=["https://linkbooksai.com", "https://app.linkbooksai.com"],
+    origins=ALLOWED_CORS_ORIGINS,  # ✅ Uses correct list dynamically  
     methods=["GET", "POST", "OPTIONS"],  # ✅ Restrict allowed HTTP methods  
     allow_headers=["Content-Type", "Authorization"],  # ✅ Allow required headers  
     expose_headers=["Set-Cookie"],  # ✅ Allows cookies in responses
     credentials=True
 )  
 
-print("✅ CORS Configured for:", ["https://linkbooksai.com", "https://app.linkbooksai.com"])
+print(f"✅ CORS Configured for: {ALLOWED_CORS_ORIGINS}")
 
 # ---------- Initialize the Websocket SocketIO instance ----------#
 
 # ✅ Dynamically Set CORS Allowed Origins
 socketio = SocketIO(
     app,
-    cors_allowed_origins=["https://linkbooksai.com", "https://app.linkbooksai.com"],  # ✅ Allow both domains
+    cors_allowed_origins=ALLOWED_CORS_ORIGINS,  # ✅ Uses same list dynamically 
     transports=["websocket"],  # ✅ Force WebSockets (no polling)
     ping_interval=25,  # ✅ Helps keep connection alive
     ping_timeout=60  # ✅ Prevents WebSocket from closing too soon
 )
 
-print("✅ WebSockets Configured for:", ["https://linkbooksai.com", "https://app.linkbooksai.com"])
+print(f"✅ WebSockets Configured for: {ALLOWED_CORS_ORIGINS}")
 
 # ------------------------------------------------------------------------------
 
