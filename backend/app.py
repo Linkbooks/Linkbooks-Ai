@@ -1079,7 +1079,7 @@ def login():
             "session_token",
             token,
             httponly=True,
-            secure=secure_cookie,  # ✅ Required for cross-domain cookies
+            secure=True
             samesite="None",  # ✅ Allows sharing across different subdomains
             domain=".linkbooksai.com"  # ✅ Makes the cookie work across all subdomains
         )
@@ -1095,8 +1095,11 @@ def login():
 @app.route("/auth/status", methods=["GET"])
 def check_auth_status():
     session_token = request.cookies.get("session_token")
+    
+    print(f"🔍 Checking auth status... Cookies received: {request.cookies}")  # Debugging log
 
     if not session_token:
+        print("❌ No session token found! Redirecting user.")
         return jsonify({"logged_in": False, "message": "No session token found"}), 401
 
     return jsonify({"logged_in": True, "session_token": session_token})

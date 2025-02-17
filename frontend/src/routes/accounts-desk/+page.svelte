@@ -58,12 +58,11 @@
 			const response = await fetch(`${BACKEND_URL}/auth/status`, {
 				method: 'GET',
 				credentials: 'include', // ✅ Ensures cookies are sent
-				headers: {
-					'Content-Type': 'application/json'
-				}
 			});
 
+			console.log('🔍 Auth Check Response:', response);
 			const data = await response.json();
+			console.log('🔍 Auth Data:', data);
 
 			if (data.logged_in && data.session_token) {
 				console.log('✅ Session token retrieved:', data.session_token);
@@ -84,7 +83,7 @@
 			reconnection: true,
 			reconnectionAttempts: 10,
 			reconnectionDelay: 2000,
-			auth: { session_token: localStorage.getItem('session_token') } // ✅ Send token in WebSocket auth
+			auth: sessionToken ? { session_token: sessionToken } : undefined // ✅ Only send if it exists// ✅ Send token in WebSocket auth
 		});
 
 		// ✅ Handle WebSocket connection
