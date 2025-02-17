@@ -74,11 +74,11 @@
 <div class="dashboard-container">
 	<header>
 		<img src="/logo.png" alt="App Logo" class="logo">
-		<h1>Linkbooks AI</h1>
+		<h1>Linkbooks Ai</h1>
 	</header>
 
 	<div class="divider"></div>
-	<h2>Dashboard</h2>
+	<h2 class="dashboard-title">Dashboard</h2>
 
 	<!-- ✅ QuickBooks Connection Status -->
 	{#if $quickbooksConnected}
@@ -141,7 +141,7 @@
 
 <style>
 	.dashboard-container {
-		max-width: 600px;
+		max-width: 690px;
 		margin: auto;
 		padding: 20px;
 		text-align: center;
@@ -160,7 +160,8 @@
 	.alert {
 		padding: 10px;
 		border-radius: 5px;
-		margin: 10px 0;
+		margin: 10px auto;
+		max-width: 500px;
 	}
 	.success { background: #d4edda; color: #155724; }
 	.warning { background: #fff3cd; color: #856404; }
