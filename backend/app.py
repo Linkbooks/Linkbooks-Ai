@@ -327,7 +327,7 @@ SCOPE = "com.intuit.quickbooks.accounting"
 logging.info(f"Using REDIRECT_URI: {REDIRECT_URI}")
 assert REDIRECT_URI in [
     "http://localhost:5000/callback",
-    "https://linkbooksai.com/callback",
+    "https://app.linkbooksai.com/callback",
 ], f"Mismatch in REDIRECT_URI configuration. Current: {REDIRECT_URI}"
 
 # ------------------------------------------------------------------------------
@@ -1629,9 +1629,19 @@ def quickbooks_login():
         }).eq("user_id", user_id).execute()
 
         # ✅ FIX: Handle response correctly
-        if not response.data:  # ✅ Check if data exists instead
-            logging.error(f"Failed to update OAuth state for user {user_id}")
-            return jsonify({"error": "Failed to update OAuth state."}), 500
+        if not response.data:  # If no existing session, insert a new one
+            logging.warning(f"No existing OAuth state found for user {user_id}. Inserting a new record...")
+    
+            insert_response = supabase.table("chatgpt_oauth_states").insert({
+                "user_id": user_id,
+                "state": state,
+                "expiry": expiry.isoformat(),
+                "is_authenticated": False
+            }).execute()
+
+            if not insert_response.data:
+                logging.error(f"Failed to insert new OAuth state for user {user_id}")
+                return jsonify({"error": "Failed to initialize OAuth state."}), 500
 
         logging.info(f"Updated OAuth state {state} for user {user_id}")
 
@@ -2082,11 +2092,13 @@ def callback():
 
             logging.info(f"QuickBooks authorization successful for user {user_id}")
 
-            # 4) Redirect user to the dashboard (or ChatGPT success message)
-            return redirect(url_for(
-                'dashboard',
-                quickbooks_login_success='true'
-            ))
+            # ✅ Detect if running in local dev mode
+            if os.getenv("FLASK_ENV") == "development":
+                redirect_url = "http://localhost:5173/dashboard?quickbooks_login_success=true"
+            else:
+                redirect_url = "https://linkbooksai.com/dashboard?quickbooks_login_success=true"
+
+            return redirect(redirect_url)
 
         except Exception as e:
             logging.error(f"Failed to store QuickBooks tokens for user {user_id}: {e}")
@@ -2131,144 +2143,71 @@ def settings():
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
     """
-    Dashboard route that checks QuickBooks authentication status.
-    Retrieves valid ChatGPT sessions from `chatgpt_oauth_states`, sorted by expiry.
+    Dashboard now serves the Svelte frontend.
+    Actual data (QuickBooks status & ChatGPT sessions) is fetched via API.
+    """
+    token = request.cookies.get('session_token')
+    if not token:
+        return redirect('/login')
+
+    return send_from_directory(app.static_folder, "index.html")
+
+@app.route('/api/dashboard-data', methods=['GET'])
+def get_dashboard_data():
+    """
+    API endpoint for fetching dashboard-related data.
+    Includes QuickBooks connection status & ChatGPT sessions.
     """
     try:
-        # Retrieve query parameters
-        success_message = request.args.get('quickbooks_login_success')
-        chat_session_id = request.args.get('chatSessionId')  # Optional
-
-        # Log chatSessionId if available
-        logging.info(f"Dashboard accessed with chatSessionId: {chat_session_id}" if chat_session_id else "Dashboard accessed without a chatSessionId.")
-
-        # Check if user is logged in via session token
-        token = request.cookies.get('session_token')
-        if not token:
-            logging.info("No session_token found. User must log in.")
-            return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True, chatSessionId=chat_session_id)
-
-        try:
-            # Decode JWT session token to get `user_id`
-            decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            user_id = decoded.get("user_id")
-            if not user_id:
-                logging.warning("No user_id in token. User must log in.")
-                return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True, chatSessionId=chat_session_id)
-        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-            logging.warning("Token invalid or expired. User must log in.")
-            return render_template('dashboard.html', success_message=success_message, quickbooks_login_needed=True, chatSessionId=chat_session_id)
-
-        # ---------------------------
-        # QuickBooks Authentication Check
-        # ---------------------------
-        quickbooks_login_needed = True  # Default to "not connected"
-
-        try:
-            # Check if the user has valid QuickBooks tokens
-            response = supabase.table("quickbooks_tokens").select("access_token", "token_expiry").eq("user_id", user_id).execute()
-
-            if response.data and response.data[0].get("access_token"):
-                expiry = response.data[0].get("token_expiry")
-                if expiry and datetime.utcnow() < datetime.fromisoformat(expiry):
-                    quickbooks_login_needed = False  # ✅ QuickBooks is connected
-                    logging.info(f"QuickBooks is connected for user {user_id}.")
-                else:
-                    logging.info(f"QuickBooks token expired for user {user_id}. Re-authentication needed.")
-            else:
-                logging.info(f"No QuickBooks tokens found for user {user_id}.")
-        except Exception as e:
-            logging.error(f"Error checking QuickBooks token status for user {user_id}: {e}")
-
-        # ---------------------------
-        # Fetch active ChatGPT sessions from `chatgpt_oauth_states`
-        # ---------------------------
-        chatgpt_sessions = []
-        try:
-            session_response = supabase.table("chatgpt_oauth_states") \
-                .select("chat_session_id, expiry, created_at") \
-                .eq("user_id", user_id) \
-                .execute()  # 🔧 Fetch everything first
-
-            logging.info(f"Raw Supabase Response: {session_response.data}")  # 🔍 Debugging
-
-            # Convert expiry timestamps manually
-            active_sessions = []
-            for session in session_response.data:
-                expiry_dt = datetime.fromisoformat(session["expiry"])
-                if expiry_dt > datetime.utcnow():
-                    active_sessions.append(session)
-
-            # Ensure only sessions with chat_session_id are counted
-            chatgpt_sessions = [
-                {
-                    "chatSessionId": str(session["chat_session_id"]) if isinstance(session["chat_session_id"], uuid.UUID) else session["chat_session_id"],
-                    "expiry": session["expiry"],
-                    "createdAt": session.get("created_at")  # 🔥 Add this field
-                }
-                for session in active_sessions
-                if session.get("chat_session_id")  # 🔧 Ignore NULL values
-            ]
-
-            logging.info(f"Filtered Active Sessions: {chatgpt_sessions}")
-
-        except Exception as e:
-            logging.error(f"Error fetching ChatGPT session status: {e}")
-
-        # ---------------------------
-        # Render dashboard with updated QuickBooks connection status
-        # ---------------------------
-        return render_template(
-            'dashboard.html',
-            success_message=success_message,
-            quickbooks_login_needed=quickbooks_login_needed,
-            chatSessionId=chat_session_id or "",  # Ensure non-None value
-            chatgpt_sessions=chatgpt_sessions
-        )
-
-    except Exception as e:
-        logging.error(f"Error in /dashboard: {e}", exc_info=True)
-        return {"error": str(e)}, 500
-
-#-------------Dashboard Helper Routes-------------#
-@app.route('/fetch-chatgpt-sessions', methods=['GET'])
-def fetch_chatgpt_sessions():
-    """
-    Returns all active ChatGPT sessions for the logged-in user.
-    """
-    try:
-        # Get user_id from session token
+        # Get session token
         token = request.cookies.get('session_token')
         if not token:
             return jsonify({"error": "User not authenticated"}), 401
 
-        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        user_id = decoded.get("user_id")
-        if not user_id:
-            return jsonify({"error": "Invalid session token"}), 401
+        try:
+            decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            user_id = decoded.get("user_id")
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            return jsonify({"error": "Invalid or expired token"}), 401
 
-        # Fetch ChatGPT sessions from Supabase
+        # ✅ QuickBooks Status Check
+        quickbooks_login_needed = True
+        response = supabase.table("quickbooks_tokens").select("access_token", "token_expiry").eq("user_id", user_id).execute()
+        if response.data and response.data[0].get("access_token"):
+            expiry = response.data[0].get("token_expiry")
+            if expiry and datetime.utcnow() < datetime.fromisoformat(expiry):
+                quickbooks_login_needed = False  # ✅ QuickBooks is connected
+
+        # ✅ Fetch active ChatGPT sessions
+        chatgpt_sessions = []
         session_response = supabase.table("chatgpt_oauth_states") \
-            .select("chat_session_id, created_at, expiry") \
+            .select("chat_session_id, expiry, created_at") \
             .eq("user_id", user_id) \
             .execute()
+        
+        if session_response.data:
+            chatgpt_sessions = [
+                {
+                    "chatSessionId": str(session["chat_session_id"]) if isinstance(session["chat_session_id"], uuid.UUID) else session["chat_session_id"],
+                    "expiry": session["expiry"],
+                    "createdAt": session.get("created_at")
+                }
+                for session in session_response.data
+                if session.get("chat_session_id")
+            ]
 
-        # Ensure only valid sessions are included
-        chatgpt_sessions = [
-            {
-                "chatSessionId": str(session["chat_session_id"]),
-                "createdAt": session.get("created_at"),
-                "expiry": session["expiry"]
-            }
-            for session in session_response.data
-            if session.get("chat_session_id")  # Ignore NULL values
-        ]
-
-        return jsonify({"sessions": chatgpt_sessions}), 200
+        # ✅ Return data as JSON
+        return jsonify({
+            "success": True,
+            "quickbooks_login_needed": quickbooks_login_needed,
+            "chatSessionId": request.args.get('chatSessionId', ""),  # Pass chatSessionId from URL
+            "chatgpt_sessions": chatgpt_sessions
+        }), 200
 
     except Exception as e:
-        logging.error(f"Error in /fetch-chatgpt-sessions: {e}")
+        logging.error(f"Error in /api/dashboard-data: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 
 # ------------------------------------------

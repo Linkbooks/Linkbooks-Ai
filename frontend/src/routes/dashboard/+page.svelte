@@ -9,12 +9,12 @@
 	export const chatGPTSessions = writable<{ chatSessionId: string; createdAt: string; expiry: string }[]>([]);
 	export const sessionToken = writable<string | null>(null);
 	export const errorMessage = writable<string | null>(null);
-	let whatElseModal = writable(false);
+	export const whatElseModal = writable(false);
 
-	// ✅ Fetch Dashboard Data
+	// ✅ Fetch Dashboard Data (QuickBooks Status + ChatGPT Sessions)
 	async function fetchDashboardData() {
 		try {
-			const response = await fetch(`${BACKEND_URL}/api/dashboard`, {
+			const response = await fetch(`${BACKEND_URL}/api/dashboard-data`, {
 				method: "GET",
 				credentials: "include"
 			});
@@ -37,7 +37,7 @@
 		}
 	}
 
-	// ✅ Check authentication status on page load
+	// ✅ Check authentication status before loading the dashboard
 	onMount(async () => {
 		try {
 			const res = await fetch(`${BACKEND_URL}/auth/status`, { credentials: "include" });
@@ -45,7 +45,7 @@
 
 			if (data.logged_in) {
 				sessionToken.set(data.session_token);
-				fetchDashboardData(); // ✅ Fetch QuickBooks & ChatGPT session info
+				await fetchDashboardData(); // ✅ Fetch QuickBooks & ChatGPT session info
 			} else {
 				window.location.href = "/login"; // 🔄 Redirect if not logged in
 			}
@@ -61,6 +61,12 @@
 	}
 	function closeWhatElseModal() {
 		whatElseModal.set(false);
+	}
+
+	// ✅ Placeholder function for "List Available Reports"
+	function fetchReports() {
+		console.log("📊 Fetching reports...");
+		alert("Fetching available reports... (Functionality to be implemented)");
 	}
 </script>
 
@@ -84,7 +90,8 @@
 		<div class="alert warning">
 			<strong>⚠️ QuickBooks not connected.</strong>
 			<p>You need to log in with QuickBooks to access your data.</p>
-			<a href="/quickbooks-login" class="button">Log in with QuickBooks</a>
+			<!-- ✅ Added QuickBooks Login Button -->
+			<a href={`${BACKEND_URL}/quickbooks-login`} class="button">🔗 Log in with QuickBooks</a>
 		</div>
 	{/if}
 
@@ -107,8 +114,8 @@
 
 	<!-- ✅ Dashboard Actions -->
 	<div class="button-container">
-		<button on:click={fetchDashboardData}>Refresh Data</button>
-		<button on:click={openWhatElseModal}>What else can I do?</button>
+		<button on:click={fetchDashboardData}>📊 List Available Reports</button>
+		<button on:click={openWhatElseModal}>🛠️ What else can I do?</button>
 	</div>
 
 	{#if $errorMessage}
@@ -156,7 +163,26 @@
 	}
 	.success { background: #d4edda; color: #155724; }
 	.warning { background: #fff3cd; color: #856404; }
-	.button-container { margin: 20px 0; }
+	.button-container {
+		margin: 20px 0;
+		display: flex;
+		justify-content: center;
+		gap: 15px;
+	}
+	button, .button {
+		background-color: #468763;
+		color: white;
+		border: none;
+		padding: 10px 20px;
+		border-radius: 5px;
+		cursor: pointer;
+		font-size: 16px;
+		text-decoration: none;
+		display: inline-block;
+	}
+	button:hover, .button:hover {
+		background-color: #35694b;
+	}
 	.modal {
 		position: fixed;
 		top: 0;
