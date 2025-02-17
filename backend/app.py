@@ -2113,19 +2113,27 @@ def callback():
 # ------------------------------------------------------------------------------
 # User Profile and Settings Routes
 # ------------------------------------------------------------------------------
-@app.route('/user_profile')
-@token_required  # Add authentication check
+# ------------------------------------------
+# User Profile API Route (Now Returns JSON)
+# ------------------------------------------
+@app.route('/user_profile', methods=['GET'])
+@token_required  # ✅ Ensures authentication
 def user_profile():
     try:
-        user_id = request.user_id  # Gets user_id from token_required decorator
-        # Fetch user data from Supabase
+        user_id = request.user_id  # ✅ Get user_id from token_required decorator
+        
+        # ✅ Fetch user data from Supabase
         user_data = supabase.table("user_profiles").select("*").eq("id", user_id).execute()
+
         if not user_data.data:
-            return {"error": "User not found"}, 404
-        return render_template('user_profile.html', user=user_data.data[0])
+            return jsonify({"error": "User not found"}), 404
+
+        return jsonify(user_data.data[0])  # ✅ Send JSON response instead of rendering HTML
+
     except Exception as e:
         logging.error(f"Error in user_profile: {e}")
-        return render_template('error.html', error="Failed to load user profile"), 500
+        return jsonify({"error": "Failed to load user profile"}), 500
+
 
 @app.route('/settings')
 @token_required  # Add authentication check

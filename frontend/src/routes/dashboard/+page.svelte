@@ -148,7 +148,8 @@
 	}
 	.logo {
 		max-width: 100px;
-		margin-bottom: 10px;
+		margin: 0 auto 10px;
+		display: block;
 	}
 	.divider {
 		width: 80px;
