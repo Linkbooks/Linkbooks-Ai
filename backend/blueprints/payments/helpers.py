@@ -1,10 +1,10 @@
 import logging
 import os
-import stripe
+from extensions import stripe
+from extensions import supabase
 import secrets
 from datetime import datetime, timedelta
 from flask import jsonify, render_template
-from extensions import supabase
 from utils import send_verification_email
 
 # Initialize Stripe
@@ -102,20 +102,65 @@ def handle_customer_subscription_updated(subscription):
 # --------------------------------------------
 #          Stripe Session Creation
 # --------------------------------------------
-def create_stripe_checkout_session(user_id, email, subscription_plan, chat_session_id):
-    checkout_session = stripe.checkout.Session.create(
-        payment_method_types=['card'],
-        mode='subscription',
-        line_items=[{
-            'price': os.getenv(f'STRIPE_{subscription_plan.upper()}_PRICE_ID'),
-            'quantity': 1,
-        }],
-        success_url=f"https://linkbooksai.com/payment_success?session_id={{CHECKOUT_SESSION_ID}}&chat_session_id={chat_session_id}",
-        cancel_url="https://linkbooksai.com/payment_cancel",
-        metadata={'user_id': user_id, 'subscription_plan': subscription_plan, 'chat_session_id': chat_session_id}
-    )
-    return checkout_session
+def create_stripe_checkout_session(user_id, email, subscription_plan, chat_session_id=None):
+    """
+    Creates and returns a Stripe Checkout Session 
+    for the given user and subscription plan.
+    """
+    # Map subscription plans to Stripe Price IDs and trial durations
+    plan_details = {
+        "monthly_no_offer": {"price_id": "price_1QhXfxDi1nqWbBYc76q14cWL", "trial_days": 0},
+        "monthly_3mo_discount": {"price_id": "price_1QhdvrDi1nqWbBYcWOcfXTRJ", "trial_days": 0},
+        "annual_free_week": {"price_id": "price_1QhdyFDi1nqWbBYcdzAdZ7lE", "trial_days": 7},
+        "annual_further_discount": {"price_id": "price_1Qhe01Di1nqWbBYcixjWCokH", "trial_days": 0}
+    }
 
+    # Validate the selected plan
+    plan = plan_details.get(subscription_plan)
+    if not plan:
+        raise ValueError("Invalid subscription plan selected")
+
+    # Extract price ID and trial period for the selected plan
+    price_id = plan["price_id"]
+    trial_period_days = plan["trial_days"]
+
+    # Build success and cancel URLs with optional chat_session_id
+    base_success_url = "https://linkbooksai.com/payment_success"
+    base_cancel_url = "https://linkbooksai.com/payment_cancel"
+
+    success_url = f"{base_success_url}?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = base_cancel_url
+
+    if chat_session_id:
+        success_url += f"&chat_session_id={chat_session_id}"
+        cancel_url += f"?chat_session_id={chat_session_id}"
+
+    try:
+        # Prepare subscription data
+        subscription_data = {}
+        if trial_period_days > 0:
+            subscription_data["trial_period_days"] = trial_period_days  # Include trial only for eligible plans
+
+        # Create the Stripe Checkout Session
+        stripe_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            customer_email=email,
+            subscription_data=subscription_data,  # Add trial days only if > 0
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "subscription_plan": subscription_plan,
+                "chat_session_id": chat_session_id,
+                "user_id": user_id  # Include user_id for webhook association
+            }
+        )
+        return stripe_session  # Return the full stripe session object
+    
+    except stripe.error.StripeError as e:
+        logging.error(f"Stripe API error: {e}")
+        raise Exception(f"Failed to create Stripe session: {str(e)}")
 
 # --------------------------------------------
 #          Email Verification

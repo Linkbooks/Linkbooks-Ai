@@ -1,6 +1,7 @@
 import logging
 from flask import Blueprint, request, session, redirect, url_for, jsonify, render_template
 from extensions import supabase
+from extensions import stripe
 from .helpers import (
     handle_stripe_event,
     create_stripe_checkout_session,

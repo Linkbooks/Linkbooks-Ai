@@ -8,7 +8,8 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from supabase import create_client, AuthApiError
-from config import get_config
+from bcrypt import checkpw
+from config import get_config, Config
 from extensions import limiter, supabase
 from urllib.parse import quote
 from .helpers import token_required, generate_session_token, revoke_quickbooks_tokens
@@ -19,6 +20,11 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 # Load Supabase client
 config = get_config()
 supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+
+# Load Brevo ENV variables
+BREVO_API_KEY = Config.BREVO_API_KEY
+BREVO_SEND_EMAIL_URL = Config.BREVO_SEND_EMAIL_URL
+
 
 # ------------------------------------------
 # Login Route
@@ -101,7 +107,7 @@ def logout():
             logging.warning("No session token found during logout.")
             return render_template("logout.html", message="You have been logged out successfully.")
 
-        decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+        decoded = jwt.decode(session_token, Config.SECRET_KEY, algorithms=["HS256"])
         user_id = decoded.get("user_id")
 
         if not user_id:
@@ -232,3 +238,5 @@ def fetch_user_data():
     except Exception as e:
         logging.error(f"Error in /fetch-user-data: {e}")
         return jsonify({"error": str(e)}), 500
+    
+    
