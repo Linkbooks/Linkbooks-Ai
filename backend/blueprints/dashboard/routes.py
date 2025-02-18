@@ -1,3 +1,4 @@
+from . import dashboard_bp
 import logging
 from datetime import datetime
 from flask import Blueprint, request, jsonify, redirect, send_from_directory, current_app
@@ -6,9 +7,6 @@ import uuid
 from jwt import DecodeError, ExpiredSignatureError
 from extensions import supabase
 from config import Config
-
-# Create the Blueprint
-dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
 
 
 # ------------------------------------------

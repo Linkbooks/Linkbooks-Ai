@@ -1,3 +1,4 @@
+from . import payments_bp
 import logging
 from flask import Blueprint, request, session, redirect, url_for, jsonify, render_template
 from extensions import supabase, stripe
@@ -6,9 +7,6 @@ from .helpers import (
     create_stripe_checkout_session,
     verify_email_token
 )
-
-# Create Blueprint
-payments_bp = Blueprint('payments', __name__, url_prefix='/payments')
 
 # --------------------------------------------
 #              Subscriptions

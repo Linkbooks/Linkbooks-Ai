@@ -1,8 +1,8 @@
+from . import legal_bp
 import logging
 import os
 from flask import Blueprint, render_template, request, jsonify
 
-legal_bp = Blueprint('legal', __name__, url_prefix='/legal')
 
 # ------------------------------------------
 # 📜 Legal Routes: EULA, Privacy Policy, Debug

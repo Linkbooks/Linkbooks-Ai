@@ -2,7 +2,7 @@ import logging, requests, json
 from datetime import datetime, timedelta
 from extensions import supabase
 from config import Config
-from quickbooks.helpers import refresh_access_token, get_quickbooks_tokens, save_quickbooks_tokens
+from blueprints.quickbooks.helpers import refresh_access_token, get_quickbooks_tokens, save_quickbooks_tokens
 
 #-------- Config Variables --------#
 

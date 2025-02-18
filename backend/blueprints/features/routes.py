@@ -1,3 +1,4 @@
+from . import features_bp
 import logging
 import jwt
 from flask import Blueprint, request, jsonify, render_template, redirect
@@ -15,9 +16,6 @@ CLIENT_SECRET = Config.QB_CLIENT_SECRET
 SECRET_KEY = Config.SECRET_KEY
 REDIRECT_URI = Config.QB_REDIRECT_URI
 AUTHORIZATION_BASE_URL = Config.AUTHORIZATION_BASE_URL
-
-# Create the features blueprint
-features_bp = Blueprint('features', __name__, url_prefix='/features')
 
 # Load Supabase client
 config = get_config()

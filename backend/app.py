@@ -13,7 +13,6 @@ from blueprints.dashboard import dashboard_bp
 from blueprints.svelte_link import svelte_link_bp
 from utils.logging_utils import log_request_info
 from utils.logging_utils import setup_logging
-from utils.security_utils import verify_token
 from utils.logging_utils import register_request_logging, get_debug_env
 from utils.scheduler_utils import start_scheduler
 from utils.filters import datetimeformat
@@ -26,7 +25,7 @@ def create_app():
     app = Flask(
         __name__,
         static_folder="../frontend/.svelte-kit/output/client",  # ✅ Svelte static files
-        static_url_path="/",  
+        static_url_path="/static",  
         template_folder="templates"
     )
     
@@ -58,6 +57,7 @@ def create_app():
     # Initialize Utils
     app.jinja_env.filters['datetimeformat'] = datetimeformat
     init_mail(app)
+    
 
     # Register Blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -67,13 +67,18 @@ def create_app():
     app.register_blueprint(openai_bp, url_prefix="/chatgpt")
     app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
     app.register_blueprint(legal_bp, url_prefix='/legal')
-    app.register_blueprint(svelte_link_bp, url_prefix='/legal')
+    
+    
+    # Register the Svelte blueprint LAST
+    app.register_blueprint(svelte_link_bp, url_prefix='/')
+    
 
 
     # ✅ Register Debug Route *AFTER* the app is created
     @app.route('/debug-env', methods=['GET'])
     def debug_env():
         return get_debug_env()
+    
 
 
     return app

@@ -1,3 +1,4 @@
+from . import openai_bp
 import logging
 import uuid
 import jwt
@@ -7,7 +8,7 @@ from urllib.parse import quote
 from flask import Blueprint, request, jsonify, redirect, url_for, jsonify
 from extensions import supabase, openai_client
 from .helpers import refresh_access_token_for_chatgpt, store_tokens_for_chatgpt_session  # Ensure this is in a helpers file
-from backend.utils.security_utils import generate_random_state
+from utils.security_utils import generate_random_state
 from config import Config
 
 # ------ Config Variables ------#
@@ -17,9 +18,6 @@ CLIENT_SECRET = Config.QB_CLIENT_SECRET
 AUTHORIZATION_BASE_URL = Config.AUTHORIZATION_BASE_URL
 SCOPE = Config.SCOPE
 REDIRECT_URI = Config.QB_REDIRECT_URI
-
-# Create Blueprint
-openai_bp = Blueprint('openai', __name__, url_prefix='/openai')
 
 # ------------------------------------------
 # ChatGPT OAuth Start

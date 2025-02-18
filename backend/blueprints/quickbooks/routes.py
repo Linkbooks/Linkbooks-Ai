@@ -1,3 +1,4 @@
+from . import quickbooks_bp
 import logging
 import jwt
 import requests
@@ -6,13 +7,8 @@ from flask import Blueprint, request, jsonify, redirect
 from datetime import datetime, timedelta
 from extensions import supabase
 from config import Config
-from backend.utils.oauth_utils import validate_state
-from backend.utils.security_utils import generate_random_state
-from backend.utils.scheduler_utils import cleanup_expired_states
-
-
-# Create Blueprint
-quickbooks_bp = Blueprint('quickbooks', __name__, url_prefix='/quickbooks')
+from utils.security_utils import generate_random_state
+from utils.scheduler_utils import cleanup_expired_states
 
 #---------------------------------------------------------#
 #------------------- Config Variables --------------------#

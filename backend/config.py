@@ -26,7 +26,7 @@ class Config:
 
     # ✅ OpenAI Configuration
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    OPENAI_ASSISTANT_ID = os.getenv("asst_0w2HuDpG8cgKC3liBnHtUWSO")
+    OPENAI_ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
 
     # ✅ Supabase Configuration
     SUPABASE_URL = os.getenv("SUPABASE_URL")

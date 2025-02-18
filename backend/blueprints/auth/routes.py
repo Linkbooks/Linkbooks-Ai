@@ -1,3 +1,4 @@
+from . import auth_bp
 import logging
 import jwt
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, session, make_response
@@ -11,10 +12,8 @@ from extensions import limiter, supabase
 from urllib.parse import quote
 from .helpers import generate_session_token
 from blueprints.quickbooks.helpers import revoke_quickbooks_tokens, refresh_access_token
-from backend.utils.security_utils import token_required
+from utils.security_utils import token_required
 
-# Create the auth blueprint
-auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 # Load Supabase client
 config = get_config()
@@ -243,3 +242,11 @@ def fetch_user_data():
         return jsonify({"error": str(e)}), 500
     
     
+
+    
+logging.warning("🔍 Auth routes.py loaded...")
+
+@auth_bp.route("/testdebug", methods=["GET"])
+def test_debug():
+    logging.warning("🔍 Auth test_debug route is being called!")
+    return "OK"
