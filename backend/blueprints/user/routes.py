@@ -1,6 +1,7 @@
 import logging
 from flask import Blueprint, request, jsonify, session, render_template
 from extensions import supabase
+from utils.security_utils import token_required
 
 
 user_bp = Blueprint('user', __name__, url_prefix='/user')

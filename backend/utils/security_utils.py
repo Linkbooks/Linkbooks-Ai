@@ -2,6 +2,9 @@ import secrets
 import random, string
 import jwt
 from flask import request
+from config import Config
+from functools import wraps
+
 
 
 def generate_random_state(length=16):
@@ -21,7 +24,7 @@ def token_required(f):
         if not token:
             return {"error": "No Authorization token provided"}, 401
         try:
-            decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            decoded = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
             request.user_id = decoded.get("user_id")
             if not request.user_id:
                 raise Exception("No user_id found in the token.")
@@ -34,3 +37,5 @@ def token_required(f):
 
         return f(*args, **kwargs)
     return decorated
+
+

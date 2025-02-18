@@ -1,10 +1,13 @@
 import logging
 import jwt
 from flask import Blueprint, request, jsonify, render_template, redirect
+from datetime import datetime, timedelta
+from config import get_config, SECRET_KEY, create_client, refresh_access_token, get_company_info, get_reports, fetch_report, fetch_transactions, get_qb_transactions_raw, should_use_gpt4o, ask_gpt_to_filter
+from config import openai_client
 
 
 
-# Create the auth blueprint
+# Create the features blueprint
 features_bp = Blueprint('features', __name__, url_prefix='/features')
 
 # Load Supabase client
@@ -246,9 +249,9 @@ def fetch_transactions_ai():
         # 4️⃣ Fetch all transactions from QuickBooks
         transactions = get_qb_transactions_raw(user_id, start_date, end_date)
 
-        # 5️⃣ Determine AI Model (GPT-3.5 Turbo vs GPT-4 Turbo)
-        use_gpt4 = should_use_gpt4(query)
-        model = "gpt-4-turbo" if use_gpt4 else "gpt-3.5-turbo"
+        # 5️⃣ Determine AI Model (GPT-4o vs GPT-4o-mini)
+        use_gpt4o = should_use_gpt4o(query)
+        model = "gpt-4o" if use_gpt4o else "gpt-4o-mini"
 
         logging.info(f"Using {model} for AI filtering")
 
@@ -349,10 +352,10 @@ def filter_transactions():
         transactions = get_qb_transactions_raw(user_id, start_date, end_date)
 
         # Determine complexity
-        use_gpt4 = should_use_gpt4(query)
+        use_gpt4o = should_use_gpt4o(query)
 
         # Select model
-        model = "gpt-4-turbo" if use_gpt4 else "gpt-3.5-turbo"
+        model = "gpt-4o" if use_gpt4o else "gpt-4o-mini"
 
         logging.info(f"Using {model} for filtering")
 

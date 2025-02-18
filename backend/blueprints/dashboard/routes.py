@@ -1,9 +1,11 @@
 import logging
 from datetime import datetime
-from flask import Blueprint, request, jsonify, redirect, send_from_directory
+from flask import Blueprint, request, jsonify, redirect, send_from_directory, current_app
 import jwt
+import uuid
 from jwt import DecodeError, ExpiredSignatureError
 from extensions import supabase
+from config import Config
 
 # Create the Blueprint
 dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
@@ -22,7 +24,7 @@ def dashboard():
     if not token:
         return redirect('/login')
 
-    return send_from_directory(app.static_folder, "index.html")
+    return send_from_directory(current_app.static_folder, "index.html")
 
 @dashboard_bp.route('/api/dashboard-data', methods=['GET'])
 def get_dashboard_data():
@@ -37,7 +39,7 @@ def get_dashboard_data():
             return jsonify({"error": "User not authenticated"}), 401
 
         try:
-            decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            decoded = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
             user_id = decoded.get("user_id")
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
             return jsonify({"error": "Invalid or expired token"}), 401
