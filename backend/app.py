@@ -47,9 +47,17 @@ def create_app():
     
     # ✅ Initialize the Scheduler
     start_scheduler()  # Ensure scheduled jobs start when app runs
+    
+    # ✅ Register CORS
+    cors.init_app(
+    app,
+    supports_credentials=True,  # ✅ This is required for cookies to work
+    origins=Config.ALLOWED_CORS_ORIGINS,
+    allow_headers=["Content-Type", "Authorization"]
+)
+
 
     # Initialize Extensions
-    cors.init_app(app, origins=Config.ALLOWED_CORS_ORIGINS, allow_headers=["Content-Type", "Authorization"])
     jwt = JWTManager(app)
     limiter.init_app(app)
     socketio.init_app(app)
@@ -60,13 +68,13 @@ def create_app():
     
 
     # Register Blueprints
-    app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(quickbooks_bp, url_prefix='/quickbooks')
-    app.register_blueprint(chat_bp, url_prefix='/chat')
-    app.register_blueprint(payments_bp, url_prefix='/payments')
-    app.register_blueprint(openai_bp, url_prefix="/chatgpt")
-    app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
-    app.register_blueprint(legal_bp, url_prefix='/legal')
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(quickbooks_bp)
+    app.register_blueprint(chat_bp)
+    app.register_blueprint(payments_bp)
+    app.register_blueprint(openai_bp)
+    app.register_blueprint(dashboard_bp)
+    app.register_blueprint(legal_bp)
     
     
     # Register the Svelte blueprint LAST

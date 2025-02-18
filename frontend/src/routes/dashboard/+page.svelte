@@ -40,7 +40,7 @@
 	// ✅ Check authentication status before loading the dashboard
 	onMount(async () => {
 		try {
-			const res = await fetch(`${BACKEND_URL}/auth/status`, { credentials: "include" });
+			const res = await fetch(`${BACKEND_URL}/status`, { credentials: "include" });
 			const data = await res.json();
 
 			if (data.logged_in) {

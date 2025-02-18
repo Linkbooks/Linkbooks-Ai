@@ -23,6 +23,9 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'None'
     SESSION_COOKIE_DOMAIN = '.linkbooksai.com'
     SESSION_COOKIE_HTTPONLY = True
+    
+    # ✅ Set the frontend URL dynamically (use the deployed URL in production)
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")  # Default for local dev
 
     # ✅ OpenAI Configuration
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

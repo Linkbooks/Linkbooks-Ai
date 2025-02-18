@@ -84,8 +84,23 @@ def login():
             except Exception as e:
                 logging.error(f"Error linking chatSessionId for user {user_id}: {e}")
 
-        resp = make_response(redirect(url_for('dashboard') if not chat_session_id else url_for('auth.link_chat_session', chatSessionId=chat_session_id)))
-        resp.set_cookie("session_token", token, httponly=True, secure=True, samesite="None", domain=".linkbooksai.com")
+        resp = make_response(
+    redirect(
+        f"{Config.FRONTEND_URL}/dashboard" 
+        if not chat_session_id 
+        else url_for('auth.link_chat_session', chatSessionId=chat_session_id, _external=True)
+    )
+)
+        secure_cookie = Config.FLASK_ENV == "production"
+
+        resp.set_cookie(
+            "session_token", 
+            token, 
+            httponly=True, 
+            secure=secure_cookie,  # ✅ Only secure in production
+            samesite="None" if secure_cookie else "Lax",  # ✅ Prevents localhost issues
+            domain=".linkbooksai.com" if secure_cookie else None  # ✅ Works on localhost
+        )
         logging.info(f"Session token set for user ID: {user_id}")
 
         return resp
@@ -96,9 +111,9 @@ def login():
 
 
 # ------------------------------------------
-# Logout Route
+# Logout Route - FIXED
 # ------------------------------------------
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])  # 🔥 Ensure it's a POST-only route
 def logout():
     """
     Logs the user out by revoking QuickBooks tokens and deleting relevant tokens from Supabase.
@@ -107,14 +122,14 @@ def logout():
         session_token = request.cookies.get("session_token") or request.cookies.get("session")
         if not session_token:
             logging.warning("No session token found during logout.")
-            return render_template("logout.html", message="You have been logged out successfully.")
+            return jsonify({"success": False, "message": "No active session found."}), 401
 
         decoded = jwt.decode(session_token, Config.SECRET_KEY, algorithms=["HS256"])
         user_id = decoded.get("user_id")
 
         if not user_id:
             logging.warning("No user_id found in session token during logout.")
-            return render_template("logout.html", message="You have been logged out successfully.")
+            return jsonify({"success": False, "message": "Invalid session."}), 401
 
         # ✅ Revoke QuickBooks tokens
         qb_response = supabase.table("quickbooks_tokens").select("refresh_token").eq("user_id", user_id).execute()
@@ -126,16 +141,18 @@ def logout():
         supabase.table("quickbooks_tokens").delete().eq("user_id", user_id).execute()
 
         # ✅ Expire both session tokens
-        resp = make_response(render_template("logout.html", message="You have been logged out successfully."))
+        session.clear()  # ✅ Ensures the session is completely wiped
+        resp = jsonify({"success": True, "message": "You have been logged out successfully."})
         resp.set_cookie("session_token", "", expires=0, path="/")
         resp.set_cookie("session", "", expires=0, path="/")
 
         logging.info("✅ Both session tokens deleted successfully.")
-        return resp
+        return resp  # ✅ No redirect, just return JSON!
 
     except Exception as e:
         logging.error(f"❌ Error during logout: {e}")
-        return render_template("logout.html", message="An error occurred during logout. Please try again."), 500
+        return jsonify({"success": False, "message": "An error occurred during logout."}), 500
+
 
 
 # ------------------------------------------
