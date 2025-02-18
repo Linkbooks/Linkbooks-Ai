@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 
+
 load_dotenv()  # Load environment variables from .env
 
 
@@ -12,9 +13,9 @@ class Config:
     """Application Configuration"""
     
     # ✅ Core Security Keys
-    SECRET_KEY = os.getenv("SECRET_KEY")
+    SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
     if not SECRET_KEY:
-        raise RuntimeError("Missing SECRET_KEY environment variable!")
+        raise RuntimeError("Missing FLASK_SECRET_KEY environment variable!")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
     
     # ✅ Session & Cookie Settings
