@@ -7,7 +7,7 @@ from urllib.parse import quote
 from flask import Blueprint, request, jsonify, redirect, url_for, jsonify
 from extensions import supabase, openai_client
 from .helpers import refresh_access_token_for_chatgpt, store_tokens_for_chatgpt_session  # Ensure this is in a helpers file
-from utils.security_utils import generate_random_state
+from backend.utils.security_utils import generate_random_state
 from config import Config
 
 # ------ Config Variables ------#

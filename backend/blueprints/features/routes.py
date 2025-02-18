@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from config import get_config
 from config import Config
 from extensions import supabase, create_client, openai_client
-from quickbooks.helpers import refresh_access_token, get_quickbooks_tokens
-from openai.helpers import ask_gpt_to_filter, should_use_gpt4o
+from blueprints.quickbooks.helpers import refresh_access_token, get_quickbooks_tokens
+from blueprints.openai.helpers import ask_gpt_to_filter, should_use_gpt4o
 from .helpers import fetch_report, get_reports, fetch_transactions, get_qb_transactions_raw, get_company_info
 
 # ------ Config Variables ------ #

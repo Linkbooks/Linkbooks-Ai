@@ -10,8 +10,8 @@ from config import get_config, Config
 from extensions import limiter, supabase
 from urllib.parse import quote
 from .helpers import generate_session_token
-from quickbooks.helpers import revoke_quickbooks_tokens, refresh_access_token
-from utils.security_utils import token_required
+from blueprints.quickbooks.helpers import revoke_quickbooks_tokens, refresh_access_token
+from backend.utils.security_utils import token_required
 
 # Create the auth blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')

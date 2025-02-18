@@ -1,7 +1,6 @@
 import logging
 import os
-from extensions import stripe
-from extensions import supabase
+from extensions import stripe, supabase
 import secrets
 from datetime import datetime, timedelta
 from flask import jsonify, render_template
