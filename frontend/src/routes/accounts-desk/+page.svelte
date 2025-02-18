@@ -55,7 +55,7 @@
 		console.log('🔄 Checking authentication session...');
 
 		try {
-			const response = await fetch(`${BACKEND_URL}/auth/status`, {
+			const response = await fetch(`${BACKEND_URL}/status`, {
 				method: 'GET',
 				credentials: 'include', // ✅ Ensures cookies are sent
 			});
