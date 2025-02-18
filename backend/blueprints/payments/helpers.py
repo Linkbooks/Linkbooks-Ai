@@ -6,9 +6,15 @@ import secrets
 from datetime import datetime, timedelta
 from flask import jsonify, render_template
 from utils import send_verification_email
+from config import Config
 
 # Initialize Stripe
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+
+
+# -------- Config Variables -------- #
+STRIPE_SECRET_KEY = Config.STRIPE_SECRET_KEY
+STRIPE_PUBLIC_KEY = Config.STRIPE_PUBLIC_KEY
 
 
 # --------------------------------------------

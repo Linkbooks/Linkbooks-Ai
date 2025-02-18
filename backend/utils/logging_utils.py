@@ -1,5 +1,5 @@
 import logging
-from flask import request
+from flask import request, jsonify
 from config import Config
 import os
 
@@ -29,3 +29,31 @@ def register_request_logging(app):
     """Attaches the request logging function to the Flask app."""
     if Config.DEBUG:  # ✅ Only log in development mode
         app.before_request(log_request_info)
+        
+        
+# ----------------- Debug Load Environment Variables ----------------- #
+def get_debug_env():
+    """
+    Retrieves and logs environment variables safely.
+    ⚠️ Only allowed in development mode!
+    """
+    if not os.getenv("FLASK_ENV") == "development":
+        return jsonify({"error": "Not authorized."}), 403
+
+    variables = {
+        "SUPABASE_URL": os.getenv('SUPABASE_URL'),
+        "SUPABASE_KEY": os.getenv('SUPABASE_KEY'),
+        "QB_SANDBOX_CLIENT_ID": os.getenv('QB_SANDBOX_CLIENT_ID'),
+        "QB_SANDBOX_CLIENT_SECRET": os.getenv('QB_SANDBOX_CLIENT_SECRET'),
+        "QB_PROD_CLIENT_ID": os.getenv('QB_PROD_CLIENT_ID'),
+        "QB_PROD_CLIENT_SECRET": os.getenv('QB_PROD_CLIENT_SECRET'),
+        "FLASK_SECRET_KEY": os.getenv('FLASK_SECRET_KEY'),
+        "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
+    }
+
+    logging.info(f"Environment variables: {variables}")
+
+    return jsonify({
+        key: ("*****" if "KEY" in key or "SECRET" in key else value)
+        for key, value in variables.items()
+    }), 200

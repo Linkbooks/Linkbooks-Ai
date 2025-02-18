@@ -3,7 +3,14 @@ import requests
 import openai
 from datetime import datetime, timedelta
 from extensions import supabase
-from config import CLIENT_ID, CLIENT_SECRET, TOKEN_URL
+from config import Config
+
+# -------- Config Variables --------#
+
+CLIENT_ID = Config.QB_CLIENT_ID
+CLIENT_SECRET = Config.QB_CLIENT_SECRET
+TOKEN_URL = Config.TOKEN_URL
+
 
 def refresh_access_token_for_chatgpt(chat_session_id, refresh_token):
     """
@@ -82,9 +89,9 @@ def store_tokens_for_chatgpt_session(chat_session_id, realm_id, access_token, re
         raise
     
     
-def should_use_gpt4(query):
+def should_use_gpt4o(query):
     """
-    Determines if GPT-4 Turbo should be used based on complexity.
+    Determines if GPT-4o should be used based on complexity.
     """
     if len(query) > 100:  # Example: Longer queries are likely more complex
         return True

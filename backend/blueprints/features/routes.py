@@ -2,10 +2,19 @@ import logging
 import jwt
 from flask import Blueprint, request, jsonify, render_template, redirect
 from datetime import datetime, timedelta
-from config import get_config, SECRET_KEY, create_client, refresh_access_token, get_company_info, get_reports, fetch_report, fetch_transactions, get_qb_transactions_raw, should_use_gpt4o, ask_gpt_to_filter
-from config import openai_client
+from config import get_config
+from config import Config
+from extensions import supabase, create_client, openai_client
+from quickbooks.helpers import refresh_access_token, get_quickbooks_tokens
+from openai.helpers import ask_gpt_to_filter, should_use_gpt4o
+from .helpers import fetch_report, get_reports, fetch_transactions, get_qb_transactions_raw, get_company_info
 
-
+# ------ Config Variables ------ #
+CLIENT_ID = Config.QB_CLIENT_ID
+CLIENT_SECRET = Config.QB_CLIENT_SECRET
+SECRET_KEY = Config.SECRET_KEY
+REDIRECT_URI = Config.QB_REDIRECT_URI
+AUTHORIZATION_BASE_URL = Config.AUTHORIZATION_BASE_URL
 
 # Create the features blueprint
 features_bp = Blueprint('features', __name__, url_prefix='/features')

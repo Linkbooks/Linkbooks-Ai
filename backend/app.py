@@ -14,7 +14,7 @@ from blueprints.svelte_link import svelte_link_bp
 from utils.logging_utils import log_request_info
 from utils.logging_utils import setup_logging
 from utils.security_utils import verify_token
-from utils.logging_utils import register_request_logging
+from utils.logging_utils import register_request_logging, get_debug_env
 from utils.scheduler_utils import start_scheduler
 from utils.filters import datetimeformat
 from utils.email_utils import init_mail
@@ -68,13 +68,16 @@ def create_app():
     app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
     app.register_blueprint(legal_bp, url_prefix='/legal')
     app.register_blueprint(svelte_link_bp, url_prefix='/legal')
-    
 
 
-
+    # ✅ Register Debug Route *AFTER* the app is created
+    @app.route('/debug-env', methods=['GET'])
+    def debug_env():
+        return get_debug_env()
 
 
     return app
+
 
 
 if __name__ == "__main__":

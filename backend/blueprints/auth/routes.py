@@ -3,16 +3,15 @@ import jwt
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, session, make_response
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from werkzeug.security import generate_password_hash
-import os
-import secrets
 from datetime import datetime, timedelta
 from supabase import create_client, AuthApiError
 from bcrypt import checkpw
 from config import get_config, Config
 from extensions import limiter, supabase
 from urllib.parse import quote
-from .helpers import token_required, generate_session_token, revoke_quickbooks_tokens
+from .helpers import generate_session_token
+from quickbooks.helpers import revoke_quickbooks_tokens, refresh_access_token
+from utils.security_utils import token_required
 
 # Create the auth blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -20,6 +19,10 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 # Load Supabase client
 config = get_config()
 supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+
+# ---------- Config Variables ---------- #
+
+
 
 # Load Brevo ENV variables
 BREVO_API_KEY = Config.BREVO_API_KEY

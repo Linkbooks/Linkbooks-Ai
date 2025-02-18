@@ -1,8 +1,13 @@
 import logging, requests, json
 from datetime import datetime, timedelta
 from extensions import supabase
+from config import Config
+from quickbooks.helpers import refresh_access_token, get_quickbooks_tokens, save_quickbooks_tokens
 
+#-------- Config Variables --------#
 
+CLIENT_ID = Config.QB_CLIENT_ID
+QUICKBOOKS_API_BASE_URL = Config.QUICKBOOKS_API_BASE_URL
 
 # --------------------------------------------------------------------#
 #                        Get Reports helper: 

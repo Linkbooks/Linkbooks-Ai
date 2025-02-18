@@ -5,9 +5,18 @@ import openai
 from datetime import datetime, timedelta
 from urllib.parse import quote
 from flask import Blueprint, request, jsonify, redirect, url_for, jsonify
-from extensions import supabase
+from extensions import supabase, openai_client
 from .helpers import refresh_access_token_for_chatgpt, store_tokens_for_chatgpt_session  # Ensure this is in a helpers file
 from utils.security_utils import generate_random_state
+from config import Config
+
+# ------ Config Variables ------#
+
+CLIENT_ID = Config.QB_CLIENT_ID
+CLIENT_SECRET = Config.QB_CLIENT_SECRET
+AUTHORIZATION_BASE_URL = Config.AUTHORIZATION_BASE_URL
+SCOPE = Config.SCOPE
+REDIRECT_URI = Config.QB_REDIRECT_URI
 
 # Create Blueprint
 openai_bp = Blueprint('openai', __name__, url_prefix='/openai')
@@ -111,7 +120,7 @@ def link_chat_session():
             return jsonify({"error": "User not authenticated. Please log in first."}), 401
 
         try:
-            decoded = jwt.decode(session_token, SECRET_KEY, algorithms=["HS256"])
+            decoded = jwt.decode(session_token, Config.SECRET_KEY, algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
             return jsonify({"error": "Session token has expired. Please log in again."}), 401
         except jwt.InvalidTokenError:
@@ -259,11 +268,11 @@ def update_preferences():
 # ------------------------------------------
 # Testing OpenAI Endpoints
 # ------------------------------------------
-@ai_bp.route('/test-openai', methods=['GET'])
+@openai_bp.route('/test-openai', methods=['GET'])
 def test_openai():
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "Hello, can you confirm this is working?"}
@@ -281,7 +290,7 @@ def test_openai_key():
         if not openai_client.api_key:
             raise ValueError("OpenAI API key not loaded")
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Test API key"}],
             max_tokens=10
         )

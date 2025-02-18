@@ -8,12 +8,11 @@ user_bp = Blueprint('user', __name__, url_prefix='/user')
 
 # Import routes AFTER blueprint is defined to prevent circular imports
 
+
 # ------------------------------------------------------------------------------
 # User Profile and Settings Routes
 # ------------------------------------------------------------------------------
-# ------------------------------------------
-# User Profile API Route (Now Returns JSON)
-# ------------------------------------------
+
 @user_bp.route('/user_profile', methods=['GET'])
 @token_required  # ✅ Ensures authentication
 def user_profile():
@@ -31,10 +30,12 @@ def user_profile():
     except Exception as e:
         logging.error(f"Error in user_profile: {e}")
         return jsonify({"error": "Failed to load user profile"}), 500
+    
 
+# -------------  Settings route with authentication ------------- #
 
 @user_bp.route('/settings')
-@token_required  # Add authentication check
+@token_required
 def settings():
     try:
         settings_type = request.args.get('type', 'general')  # Get settings type from URL

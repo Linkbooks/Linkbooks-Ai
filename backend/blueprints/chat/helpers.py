@@ -1,9 +1,18 @@
 import logging, jwt, eventlet
+from openai import AssistantEventHandler
+
 from flask import request, jsonify, abort
 from flask_socketio import emit
+
 from jwt import ExpiredSignatureError, InvalidTokenError
-from extensions import socketio, supabase
-from openai import AssistantEventHandler
+
+from extensions import socketio, supabase, openai_client
+from config import Config
+from datetime import datetime, timedelta
+
+# ----------- Config Variables --------------#
+ASSISTANT_ID = Config.OPENAI_ASSISTANT_ID
+SECRET_KEY = Config.SECRET_KEY
 
 # ------------------------------------------#
 #            Chat Stuff                     #

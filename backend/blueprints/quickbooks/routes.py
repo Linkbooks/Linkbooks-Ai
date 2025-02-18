@@ -5,22 +5,25 @@ import os
 from flask import Blueprint, request, jsonify, redirect
 from datetime import datetime, timedelta
 from extensions import supabase
-from .helpers import generate_random_state, cleanup_expired_states, should_use_gpt4, fetch_report, get_company_info, fetch_transactions, get_qb_transactions_raw, refresh_access_token
-from openai.helpers import ask_gpt_to_filter, should_use_gpt4
-from config import Config, SECRET_KEY, CLIENT_ID, AUTHORIZATION_BASE_URL, REDIRECT_URI, SCOPE
+from config import Config
 from utils.oauth_utils import validate_state
+from utils.security_utils import generate_random_state
+from utils.scheduler_utils import cleanup_expired_states
 
 
 # Create Blueprint
 quickbooks_bp = Blueprint('quickbooks', __name__, url_prefix='/quickbooks')
 
 #---------------------------------------------------------#
-#------------------- QuickBooks Oauth---------------------#
+#------------------- Config Variables --------------------#
 #---------------------------------------------------------#
 
 CLIENT_ID = Config.QB_CLIENT_ID
 CLIENT_SECRET = Config.QB_CLIENT_SECRET
-REDIRECT_URI = Config.REDIRECT_URI
+REDIRECT_URI = Config.QB_REDIRECT_URI
+AUTHORIZATION_BASE_URL = Config.AUTHORIZATION_BASE_URL
+SCOPE = Config.SCOPE
+SECRET_KEY = Config.SECRET_KEY
 
 # --------------------------------------------------------#
 #    ✅ QuickBooks Login for App & ChatGPT Sessions
