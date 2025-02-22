@@ -96,7 +96,7 @@ header img {
 ------------------------------------------------------------- */
 header {
     text-align: center;
-    margin-top: 20px;
+    margin-top: 10px;
     padding-bottom: 0;
     box-shadow: none;
     background: none;
@@ -109,12 +109,29 @@ h1 {
     font-weight: 600;
 }
 
+h3 {
+    font-size: 1.5rem; 
+    font-weight: 500; 
+    color: #333; 
+    margin-top: 10px; 
+    margin-bottom: 10px; 
+}
+
 
 header p {
     font-size: 1.2rem;
     color: #555;
     margin-bottom: -5px;
 }
+
+.header.h3 {
+    font-size: 1.5rem; /* Specify font size */
+    font-weight: 500; /* Specify font weight */
+    color: #333; /* Specify text color */
+    margin-top: 10px; /* Specify top margin */
+    margin-bottom: 10px; /* Specify bottom margin */
+}
+
 
 .page-header {
     text-align: center;
@@ -276,6 +293,131 @@ header p {
     cursor: pointer;
 }
 
+/* ----------------------------------------------------------
+                    BUTTON STYLING
+-----------------------------------------------------------*/
+
+.button {
+    padding: 12px 24px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-weight: bold;
+    text-decoration: none;
+}
+
+.primary {
+    background-color: #468763;
+    color: white;
+    transition: background-color 0.3s;
+}
+
+.primary:hover {
+    background-color: #3a6d54;
+}
+
+.secondary {
+    background-color: white;
+    border: 2px solid #468763;
+    color: #468763;
+    margin-bottom: 15px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.secondary:hover {
+    background-color: #468763;
+    color: white;
+}
+
+/* -------------------------------------------------------------
+   LOGIN PAGE STYLING
+------------------------------------------------------------- */
+
+.login-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background-color: #f5f5f5;
+}
+
+.header-link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Center the content */
+}
+
+.logo {
+    height: 100px;
+    margin-top: 30px; 
+    margin-right: 10px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.container {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+    margin: 1rem;
+    margin-top: 30px;
+}
+
+.form-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.input-group {
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+.input-field {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.error-message {
+    color: red;
+    margin-bottom: 1rem;
+}
+
+.password-toggle {
+    cursor: pointer;
+    margin-left: -30px;
+}
+
+.tooltip-icon {
+    cursor: help;
+    margin-left: 5px;
+}
+
+.loading-spinner {
+    margin-left: 10px;
+}
+
+.progressive-forgot-password {
+    margin-top: 1rem;
+}
+
+.form-note {
+    margin-top: 1rem;
+}
+
+.navigation {
+    margin-top: 2rem;
+    margin-bottom: 2rem; /* Add bottom margin */
+}
 
 /*-------------------------------------------------------------
    GLOBAL FOOTER STYLING
@@ -284,7 +426,8 @@ header p {
     background-color: #f8f9fa;
     padding: 20px 0;
     border-top: 1px solid #e9ecef;
-    margin-top: 40px;
+    /* Remove or adjust the margin-top property */
+    margin-top: 0; /* Adjusted from 40px to 0 */
 }
 
 .site-footer .footer-content {
@@ -339,4 +482,15 @@ header p {
     border-radius: 8px;
     color: red;
     font-weight: bold;
+}
+
+/*----------------------------------------------------------
+   TOOLTIP STYLING
+-----------------------------------------------------------*/
+.tooltip-icon {
+    margin-left: 8px;
+    cursor: pointer;
+    color: #468763;
+    font-weight: bold;
+    font-size: 1.2rem;
 }
