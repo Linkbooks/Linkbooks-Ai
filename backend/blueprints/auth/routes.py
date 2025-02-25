@@ -187,10 +187,12 @@ def check_auth_status():
 def create_account():
     if request.method == 'GET':
         chat_session_id = request.args.get('chatSessionId', None)
-        return render_template('create_account.html', chat_session_id=chat_session_id)
+        # Redirect to the Svelte signup page
+        return redirect(url_for('frontend.signup', chatSessionId=chat_session_id))
 
     elif request.method == 'POST':
         data = request.form
+        # Use the same key as in the form
         chat_session_id = data.get('chat_session_id', None)
         name = data.get('name', '').strip()
         email = data.get('email', '').strip().lower()
@@ -250,7 +252,10 @@ def create_account():
         if chat_session_id:
             session['chat_session_id'] = chat_session_id
 
-        return redirect(url_for('subscriptions'))
+        # Redirect directly to the Svelte subscriptions page
+        return jsonify({"success": True, "redirect_url": f"/subscriptions?email={email}&chatSessionId={chat_session_id or ''}&userId={user_id}"})
+
+
 
 
 

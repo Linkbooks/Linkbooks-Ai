@@ -129,7 +129,7 @@
 
 		<p class="form-note">
 			Don't have an account?
-			<a href="/create-account?chat_session_id={chatSessionId}" class="link">Create one</a>
+			<a href="/auth/signup?chat_session_id={chatSessionId}" class="link">Create one</a>
 		</p>
 	</div>
 
@@ -186,5 +186,26 @@
 		justify-content: center;
 		align-items: center;
 		width: 100%;
+	}
+
+	/* Center the main container */
+	.login-page {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		min-height: 100vh;
+		padding: 20px;
+	}
+
+	.form-container {
+		width: 100%;
+		max-width: 400px;
+		margin: 0 auto;
+		margin-top: 10px;
+		padding: 20px;
+		background: #fff;
+		border-radius: 8px;
+		box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 	}
 </style>

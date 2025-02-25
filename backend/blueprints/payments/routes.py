@@ -18,8 +18,9 @@ def subscriptions():
         chat_session_id = session.get('chat_session_id', None)
         user_id = session.get('user_id')
 
+        # Redirect to Svelte signup page if no email    
         if not email:
-            return redirect(url_for('auth.create_account'))
+            return redirect(f'/auth/signup{f"?chatSessionId={chat_session_id}" if chat_session_id else ""}')
 
         user_profile = supabase.table("user_profiles").select("subscription_status").eq("email", email).execute()
         if user_profile.data:
@@ -29,19 +30,23 @@ def subscriptions():
             elif subscription_status == "pending":
                 return render_template('subscriptions.html', email=email, chat_session_id=chat_session_id, user_id=user_id, message="Your payment is being processed.")
 
-        return render_template('subscriptions.html', email=email, chat_session_id=chat_session_id, user_id=user_id)
-    
+        return redirect(f'/(subscriptions)/subscriptions?email={email}&chatSessionId={chat_session_id or ""}&userId={user_id}')
+
     elif request.method == 'POST':
         data = request.json
+        logging.info(f"Received data: {data}")
+
         email = data.get('email')
         subscription_plan = data.get('subscription_plan')
         chat_session_id = data.get('chat_session_id', None)
 
         if not email or not subscription_plan:
+            logging.error("Email and subscription plan are required")
             return jsonify({'error': 'Email and subscription plan are required'}), 400
 
         user_profile = supabase.table("user_profiles").select("id").eq("email", email).execute()
         if not user_profile.data:
+            logging.error(f"No user found with email: {email}")
             return jsonify({'error': 'No user found with that email'}), 404
 
         user_id = user_profile.data[0]['id']
@@ -52,7 +57,6 @@ def subscriptions():
         except Exception as e:
             logging.error(f"Stripe session creation failed: {e}, chat_session_id: {chat_session_id}")
             return jsonify({'error': str(e)}), 500
-
 
 # --------------------------------------------
 #              Stripe Webhooks
@@ -67,7 +71,6 @@ def stripe_webhook():
 
     return handle_stripe_event(payload, sig_header)
 
-
 # --------------------------------------------
 #              Stripe Redirects
 # --------------------------------------------
@@ -81,12 +84,10 @@ def payment_success():
 
     return render_template('payment_success.html', session_id=session_id, chat_session_id=chat_session_id)
 
-
 @payments_bp.route('/payment_cancel')
 def payment_cancel():
     chat_session_id = request.args.get('chat_session_id')
     return render_template('payment_cancel.html', chat_session_id=chat_session_id)
-
 
 # --------------------------------------------
 #              Email Verification
