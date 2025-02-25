@@ -34,23 +34,25 @@ BREVO_SEND_EMAIL_URL = Config.BREVO_SEND_EMAIL_URL
 @auth_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("5 per minute", error_message="Too many login attempts. Please try again in a minute.")
 def login():
-    if request.method == 'GET':
-        chat_session_id = request.args.get('chatSessionId')
-        return render_template('login.html', chatSessionId=chat_session_id)
-
     try:
         data = request.form
         email = data.get('email', '').strip().lower()
         password = data.get('password')
-        chat_session_id = data.get('chatSessionId')
+        chat_session_id = data.get('chatSessionId', '')
 
         if not email or not password:
-            return render_template('login.html', error_message="Email and password are required.", chatSessionId=chat_session_id), 400
+            return jsonify({
+                'error_message': "Email and password are required.",
+                'chatSessionId': chat_session_id
+            }), 400
 
         response = supabase.table("users").select("id").eq("email", email).execute()
         if not response.data:
             logging.warning(f"Login failed: No account found for email {email}.")
-            return render_template('login.html', error_message="No account found with that email.", chatSessionId=chat_session_id), 401
+            return jsonify({
+                'error_message': "No account found with that email.",
+                'chatSessionId': chat_session_id
+            }), 401
 
         user_id = response.data[0]["id"]
 
@@ -60,13 +62,25 @@ def login():
         except AuthApiError as e:
             error_msg = str(e).lower()
             if 'invalid login credentials' in error_msg or 'invalid password' in error_msg:
-                return render_template('login.html', error_message="Invalid email or password.", chatSessionId=chat_session_id), 401
+                return jsonify({
+                    'error_message': "Invalid email or password.",
+                    'chatSessionId': chat_session_id
+                }), 401
             elif 'too many requests' in error_msg or 'rate limit' in error_msg:
-                return render_template('login.html', error_message="Too many login attempts. Please try again later.", chatSessionId=chat_session_id), 401
+                return jsonify({
+                    'error_message': "Too many login attempts. Please try again later.",
+                    'chatSessionId': chat_session_id
+                }), 429
             elif 'jwt expired' in error_msg:
-                return render_template('login.html', error_message="Session expired. Please log in again.", chatSessionId=chat_session_id), 401
+                return jsonify({
+                    'error_message': "Session expired. Please log in again.",
+                    'chatSessionId': chat_session_id
+                }), 401
             else:
-                return render_template('login.html', error_message="An error occurred during login. Please try again.", chatSessionId=chat_session_id), 401
+                return jsonify({
+                    'error_message': "An error occurred during login. Please try again.",
+                    'chatSessionId': chat_session_id
+                }), 500
 
         token = generate_session_token(user_id, email)
         logging.info(f"Generated session token for user ID: {user_id}")
@@ -84,22 +98,20 @@ def login():
             except Exception as e:
                 logging.error(f"Error linking chatSessionId for user {user_id}: {e}")
 
-        resp = make_response(
-    redirect(
-        f"{Config.FRONTEND_URL}/dashboard" 
-        if not chat_session_id 
-        else url_for('auth.link_chat_session', chatSessionId=chat_session_id, _external=True)
-    )
-)
-        secure_cookie = Config.FLASK_ENV == "production"
+        # Determine the redirect URL.
+        redirect_url = (Config.FRONTEND_URL + "/dashboard") if not chat_session_id \
+            else url_for('auth.link_chat_session', chatSessionId=chat_session_id, _external=True)
 
+        # Create a JSON response and set the session cookie.
+        resp = make_response(jsonify({'redirect_url': redirect_url}))
+        secure_cookie = Config.FLASK_ENV == "production"
         resp.set_cookie(
-            "session_token", 
-            token, 
-            httponly=True, 
-            secure=secure_cookie,  # ✅ Only secure in production
-            samesite="None" if secure_cookie else "Lax",  # ✅ Prevents localhost issues
-            domain=".linkbooksai.com" if secure_cookie else None  # ✅ Works on localhost
+            "session_token",
+            token,
+            httponly=True,
+            secure=secure_cookie,
+            samesite="None" if secure_cookie else "Lax",
+            domain=".linkbooksai.com" if secure_cookie else None
         )
         logging.info(f"Session token set for user ID: {user_id}")
 
@@ -107,7 +119,7 @@ def login():
 
     except Exception as e:
         logging.error(f"Error during login: {e}", exc_info=True)
-        return render_template('login.html', error_message="An unexpected error occurred during login. Please try again."), 500
+        return jsonify({'error_message': "An unexpected error occurred during login. Please try again."}), 500
 
 
 # ------------------------------------------

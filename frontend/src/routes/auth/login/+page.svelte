@@ -1,4 +1,6 @@
 <script lang="ts">
+	const API_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -22,11 +24,12 @@
 		event.preventDefault();
 		loading = true;
 
-		const response = await fetch('/login', {
+		const response = await fetch(`${API_URL}/login`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/x-www-form-urlencoded'
 			},
+			credentials: 'include', // This ensures cookies are sent and received
 			body: new URLSearchParams({
 				email,
 				password,
@@ -149,7 +152,6 @@
 		border: 1px solid #ccc;
 		border-radius: 6px;
 	}
-    
 
 	.password-toggle {
 		position: absolute;
