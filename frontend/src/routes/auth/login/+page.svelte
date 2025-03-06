@@ -1,5 +1,5 @@
 <script lang="ts">
-	const API_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+	const API_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || 'http://localhost:3000';
 
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -23,28 +23,41 @@
 	async function handleSubmit(event: Event) {
 		event.preventDefault();
 		loading = true;
+		errorMessage = '';
 
-		const response = await fetch(`${API_URL}/login`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/x-www-form-urlencoded'
-			},
-			credentials: 'include', // This ensures cookies are sent and received
-			body: new URLSearchParams({
-				email,
-				password,
-				chatSessionId
-			})
-		});
+		try {
+			const response = await fetch(`${API_URL}/auth/login`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				credentials: 'include', // ✅ Ensures cookies are sent and received
+				body: JSON.stringify({ email, password, chatSessionId })
+			});
 
-		const result = await response.json();
-		loading = false;
+			const result = await response.json();
+			loading = false;
 
-		if (response.ok) {
-			goto(result.redirect_url || '/dashboard');
-		} else {
-			errorMessage =
-				result.error_message || 'An unexpected error occurred during login. Please try again.';
+			if (response.ok) {
+				console.log('✅ Login successful!', result);
+				localStorage.setItem('session_token', result.session_token); // ✅ Store session token for tracking
+
+				// ✅ Check authentication status before redirecting
+				const statusResponse = await fetch(`${API_URL}/auth/status`, { credentials: 'include' });
+				const status = await statusResponse.json();
+
+				if (status.logged_in) {
+					goto('/dashboard'); // ✅ Redirect only if authentication is confirmed
+				} else {
+					errorMessage = 'Login successful, but session not established.';
+				}
+			} else {
+				errorMessage = result.error_message || 'An unexpected error occurred. Please try again.';
+			}
+		} catch (error) {
+			console.error('❌ Login error:', error);
+			errorMessage = 'A network error occurred. Please try again.';
+			loading = false;
 		}
 	}
 </script>
@@ -186,26 +199,5 @@
 		justify-content: center;
 		align-items: center;
 		width: 100%;
-	}
-
-	/* Center the main container */
-	.login-page {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		min-height: 100vh;
-		padding: 20px;
-	}
-
-	.form-container {
-		width: 100%;
-		max-width: 400px;
-		margin: 0 auto;
-		margin-top: 10px;
-		padding: 20px;
-		background: #fff;
-		border-radius: 8px;
-		box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 	}
 </style>

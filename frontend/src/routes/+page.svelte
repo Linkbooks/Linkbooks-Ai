@@ -12,7 +12,7 @@
 		</div>
 		<div class="navbar-buttons">
 			<button class="button" on:click={() => goto('/auth/login')}>Log In</button>
-			<a href="/signup" class="button secondary">Sign Up</a>
+            <button class="button secondary" on:click={() => goto('/auth/signup')}>Sign Up</button>
 		</div>
 	</nav>
 </header>

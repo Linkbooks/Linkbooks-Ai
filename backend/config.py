@@ -12,6 +12,10 @@ if os.getenv("FLASK_ENV") == "development":
 class Config:
     """Application Configuration"""
     
+    # ✅ Environment & Debugging
+    FLASK_ENV = os.getenv("FLASK_ENV", "production")
+    DEBUG = FLASK_ENV == "development"
+    
     # ✅ Core Security Keys
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
     if not SECRET_KEY:
@@ -19,9 +23,12 @@ class Config:
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
     
     # ✅ Session & Cookie Settings
-    SESSION_COOKIE_SECURE = True
-    SESSION_COOKIE_SAMESITE = 'None'
-    SESSION_COOKIE_DOMAIN = '.linkbooksai.com'
+    if FLASK_ENV == "development":
+        SESSION_COOKIE_SECURE = False
+        SESSION_COOKIE_DOMAIN = None
+    else:
+        SESSION_COOKIE_SECURE = True
+        SESSION_COOKIE_DOMAIN = '.linkbooksai.com'
     SESSION_COOKIE_HTTPONLY = True
     
     # ✅ Set the frontend URL dynamically (use the deployed URL in production)
@@ -71,10 +78,6 @@ class Config:
     
     print(f"✅ CORS Allowed Origins: {ALLOWED_CORS_ORIGINS}")
     print(f"✅ WebSockets Allowed Origins: {SOCKETIO_CORS_ALLOWED_ORIGINS}")
-
-    # ✅ Environment & Debugging
-    FLASK_ENV = os.getenv("FLASK_ENV", "production")
-    DEBUG = FLASK_ENV == "development"
     
     # ✅ QuickBooks OAuth Settings
     if FLASK_ENV == "development":

@@ -179,6 +179,33 @@ def check_auth_status():
 
     return jsonify({"logged_in": True, "session_token": session_token})
 
+@auth_bp.route('/session', methods=['GET'])
+def get_session():
+    """Returns the logged-in user's session info, fetching email from Supabase"""
+    if 'user_id' not in session:
+        return jsonify({'error': 'User not logged in'}), 401
+
+    user_id = session['user_id']
+
+    try:
+        # Fetch user email from Supabase
+        user_data = supabase.table("user_profiles").select("email").eq("id", user_id).execute()
+        if not user_data.data:
+            return jsonify({'error': 'User not found in database'}), 404
+
+        email = user_data.data[0]['email']
+
+        return jsonify({
+            'email': email,  # ✅ Fetching from Supabase instead of session
+            'user_id': user_id,
+            'chat_session_id': session.get('chat_session_id', None)
+        })
+
+    except Exception as e:
+        logging.error(f"Error fetching user session data: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to retrieve session data'}), 500
+
+
 
 # ------------------------------------------
 # Create Account Route

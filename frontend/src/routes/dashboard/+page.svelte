@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { writable } from 'svelte/store';
 
-	const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || "http://localhost:5000";
+	const BACKEND_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
 	// ✅ Reactive stores for dashboard data
 	export const quickbooksConnected = writable<boolean>(false);
@@ -14,7 +14,7 @@
 	// ✅ Fetch Dashboard Data (QuickBooks Status + ChatGPT Sessions)
 	async function fetchDashboardData() {
 		try {
-			const response = await fetch(`${BACKEND_URL}/api/dashboard-data`, {
+			const response = await fetch(`${BACKEND_URL}/dashboard/api/dashboard-data`, {
 				method: "GET",
 				credentials: "include"
 			});
@@ -40,18 +40,18 @@
 	// ✅ Check authentication status before loading the dashboard
 	onMount(async () => {
 		try {
-			const res = await fetch(`${BACKEND_URL}/status`, { credentials: "include" });
+			const res = await fetch(`${BACKEND_URL}/auth/status`, { credentials: "include" });
 			const data = await res.json();
 
 			if (data.logged_in) {
 				sessionToken.set(data.session_token);
 				await fetchDashboardData(); // ✅ Fetch QuickBooks & ChatGPT session info
 			} else {
-				window.location.href = "/login"; // 🔄 Redirect if not logged in
+				window.location.href = "/auth/login"; // 🔄 Redirect if not logged in
 			}
 		} catch (error) {
 			console.error("❌ Error checking auth status:", error);
-			window.location.href = "/login";
+			window.location.href = "/auth/login";
 		}
 	});
 
